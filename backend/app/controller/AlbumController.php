@@ -227,13 +227,7 @@ class AlbumController
 
         Album::where('id', $id)->inc('view_count')->update();
 
-        AccessLog::create([
-            'album_id'   => $id,
-            'user_id'    => $userId > 0 ? $userId : null,
-            'ip'         => $ip,
-            'user_agent' => $userAgent,
-            'created_at' => date('Y-m-d H:i:s'),
-        ]);
+        AccessLog::addLog($id, $userId > 0 ? $userId : 0, $ip, $userAgent);
 
         if ($isRestrictedAlbum) {
             try {

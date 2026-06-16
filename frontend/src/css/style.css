@@ -1270,3 +1270,170 @@ input:-webkit-autofill:focus {
     color: var(--gray-500);
 }
 
+.region-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    min-height: 380px;
+}
+@media (max-width: 900px) {
+    .region-stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+.region-map-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+.region-map-wrap {
+    width: 100%;
+    max-width: 520px;
+}
+.china-region-map {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.china-region-map .china-map-path {
+    cursor: pointer;
+    transition: fill 0.2s, stroke 0.2s;
+}
+.china-region-map .china-map-path:hover {
+    filter: brightness(0.9);
+}
+.region-legend {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--gray-500);
+}
+.region-legend-bar {
+    display: flex;
+    gap: 2px;
+}
+.region-legend-bar span {
+    width: 24px;
+    height: 10px;
+    border-radius: 2px;
+    display: block;
+}
+.region-ranking-section {
+    display: flex;
+    flex-direction: column;
+}
+.region-top10-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+.region-top10-header h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--gray-800);
+    margin: 0;
+}
+.region-total-badge {
+    font-size: 12px;
+    color: var(--gray-500);
+    background: var(--gray-100);
+    padding: 3px 10px;
+    border-radius: 12px;
+}
+.region-top10-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.region-rank-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+}
+.region-rank-index {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.region-rank-name {
+    width: 56px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--gray-700);
+    flex-shrink: 0;
+}
+.region-rank-bar-wrap {
+    flex: 1;
+    height: 8px;
+    background: var(--gray-100);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.region-rank-bar {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+    min-width: 2px;
+}
+.region-rank-count {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gray-800);
+    min-width: 36px;
+    text-align: right;
+}
+.region-rank-percent {
+    font-size: 12px;
+    color: var(--gray-500);
+    min-width: 42px;
+    text-align: right;
+}
+.region-empty {
+    text-align: center;
+    color: var(--gray-400);
+    padding: 48px 0;
+    font-size: 14px;
+}
+.region-range-group {
+    display: flex;
+    border: 1.5px solid var(--gray-300);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+.region-range-btn {
+    padding: 5px 14px;
+    font-size: 13px;
+    border: none;
+    background: var(--white);
+    color: var(--gray-600);
+    cursor: pointer;
+    transition: var(--transition);
+    font-family: inherit;
+}
+.region-range-btn:not(:last-child) {
+    border-right: 1px solid var(--gray-300);
+}
+.region-range-btn:hover {
+    background: var(--gray-50);
+    color: var(--primary);
+}
+.region-range-btn.active {
+    background: var(--primary);
+    color: var(--white);
+    border-color: var(--primary);
+}
+.region-range-btn.active + .region-range-btn,
+.region-range-btn.active {
+    border-right-color: var(--primary);
+}
+

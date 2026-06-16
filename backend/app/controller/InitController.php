@@ -72,6 +72,19 @@ class InitController
         } catch (\Exception $e) {
             Log::error('迁移 album_favorites 失败: ' . $e->getMessage());
         }
+
+        try {
+            $columns = Db::query("SHOW COLUMNS FROM `access_logs` LIKE 'province'");
+            if (empty($columns)) {
+                Db::execute("ALTER TABLE `access_logs` ADD COLUMN `province` VARCHAR(50) DEFAULT '未知' COMMENT '省份' AFTER `ip`");
+                Db::execute("ALTER TABLE `access_logs` ADD COLUMN `city` VARCHAR(50) DEFAULT '未知' COMMENT '城市' AFTER `province`");
+                Db::execute("ALTER TABLE `access_logs` ADD INDEX `idx_province` (`province`)");
+                Db::execute("ALTER TABLE `access_logs` ADD INDEX `idx_created_at` (`created_at`)");
+                Log::info('迁移: access_logs 表新增 province/city 字段');
+            }
+        } catch (\Exception $e) {
+            Log::error('迁移 access_logs 失败: ' . $e->getMessage());
+        }
     }
 
     private function initLevelQuotas()

@@ -132,6 +132,8 @@ const api = {
     },
     admin: {
         dashboard: () => apiRequest('/admin/dashboard'),
+        regionStats: (range = 'today') => apiRequest('/admin/dashboard/region?range=' + range),
+        backfillRegion: () => apiRequest('/admin/dashboard/backfill-region', { method: 'POST' }),
         albums: (params) => apiRequest('/admin/albums?' + new URLSearchParams(params || {})),
         albumDetail: (id) => apiRequest(`/admin/albums/${id}`),
         createAlbum: (data) => apiRequest('/admin/albums', { method: 'POST', body: data }),

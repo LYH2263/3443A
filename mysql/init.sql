@@ -135,10 +135,14 @@ CREATE TABLE IF NOT EXISTS `access_logs` (
   `album_id` INT UNSIGNED NOT NULL COMMENT '画册ID',
   `user_id` INT UNSIGNED DEFAULT NULL COMMENT '用户ID',
   `ip` VARCHAR(45) DEFAULT '' COMMENT 'IP地址',
+  `province` VARCHAR(50) DEFAULT '未知' COMMENT '省份',
+  `city` VARCHAR(50) DEFAULT '未知' COMMENT '城市',
   `user_agent` VARCHAR(500) DEFAULT '' COMMENT 'UserAgent',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   KEY `idx_album` (`album_id`),
-  KEY `idx_user` (`user_id`)
+  KEY `idx_user` (`user_id`),
+  KEY `idx_province` (`province`),
+  KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='访问日志表';
 
 -- 初始化会员等级

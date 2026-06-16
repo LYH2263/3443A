@@ -81,6 +81,8 @@ Route::group('api/upload', function () {
 Route::group('api/admin', function () {
     // Dashboard
     Route::get('dashboard', 'DashboardController@stats');
+    Route::get('dashboard/region', 'DashboardController@regionStats');
+    Route::post('dashboard/backfill-region', 'DashboardController@backfillRegion');
 
     // Albums CRUD
     Route::get('albums/:id', 'AlbumController@detail')->pattern(['id' => '\d+']);
