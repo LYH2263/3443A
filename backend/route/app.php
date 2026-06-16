@@ -98,6 +98,13 @@ Route::group('api/admin', function () {
     Route::delete('albums/:albumId/pages/:id', 'AlbumPageController@delete');
     Route::post('albums/:albumId/pages/sort', 'AlbumPageController@sort');
 
+    // Album Snapshots (版本历史)
+    Route::get('albums/:albumId/snapshots', 'AlbumSnapshotController@index');
+    Route::get('albums/:albumId/snapshots/:id', 'AlbumSnapshotController@detail');
+    Route::get('albums/:albumId/snapshots/diff', 'AlbumSnapshotController@diff');
+    Route::post('albums/:albumId/snapshots/rollback', 'AlbumSnapshotController@rollback');
+    Route::post('albums/:albumId/snapshots', 'AlbumSnapshotController@createManual');
+
     // QR Code
     Route::post('qrcode/generate', 'QrcodeController@generate');
 

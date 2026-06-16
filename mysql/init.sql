@@ -107,6 +107,23 @@ CREATE TABLE IF NOT EXISTS `album_pages` (
   KEY `idx_page_number` (`album_id`, `page_number`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='画册页面表';
 
+-- 画册快照表（版本历史）
+CREATE TABLE IF NOT EXISTS `album_snapshots` (
+  `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `album_id` INT UNSIGNED NOT NULL COMMENT '画册ID',
+  `version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '版本号，递增',
+  `snapshot_data` JSON NOT NULL COMMENT '快照数据（画册信息+页面列表）',
+  `page_count` INT UNSIGNED DEFAULT 0 COMMENT '快照时的页面数',
+  `size_bytes` INT UNSIGNED DEFAULT 0 COMMENT '快照数据大小(字节)',
+  `operator_id` INT UNSIGNED DEFAULT NULL COMMENT '操作人ID',
+  `remark` VARCHAR(200) DEFAULT '' COMMENT '快照备注',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_album_version` (`album_id`, `version`),
+  KEY `idx_album_id` (`album_id`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='画册快照表（版本历史）';
+
 -- 画册书签表
 CREATE TABLE IF NOT EXISTS `album_bookmarks` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

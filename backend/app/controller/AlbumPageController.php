@@ -4,6 +4,7 @@ namespace app\controller;
 
 use app\model\Album;
 use app\model\AlbumPage;
+use app\service\AlbumSnapshotService;
 use think\facade\Log;
 use think\facade\Validate;
 use think\Request;
@@ -47,6 +48,13 @@ class AlbumPageController
             return json_error($validate->getError());
         }
 
+        $pages = AlbumPage::where('album_id', $albumId)->order('page_number', 'asc')->select();
+        try {
+            AlbumSnapshotService::createSnapshot($albumId, $request->uid, '添加页面前快照', $album, $pages);
+        } catch (\Exception $e) {
+            Log::warning("创建快照失败: album_id={$albumId}, error=" . $e->getMessage());
+        }
+
         $maxPage = AlbumPage::where('album_id', $albumId)->max('page_number') ?? 0;
 
         $page = new AlbumPage();
@@ -70,6 +78,14 @@ class AlbumPageController
         $page = AlbumPage::where('album_id', $albumId)->where('id', $id)->find();
         if (!$page) {
             return json_error('页面不存在', 404);
+        }
+
+        $album = Album::find($albumId);
+        $allPages = AlbumPage::where('album_id', $albumId)->order('page_number', 'asc')->select();
+        try {
+            AlbumSnapshotService::createSnapshot($albumId, $request->uid, '更新页面前快照', $album, $allPages);
+        } catch (\Exception $e) {
+            Log::warning("创建快照失败: album_id={$albumId}, error=" . $e->getMessage());
         }
 
         $data = getRequestData($request);
@@ -96,6 +112,14 @@ class AlbumPageController
             return json_error('页面不存在', 404);
         }
 
+        $album = Album::find($albumId);
+        $allPages = AlbumPage::where('album_id', $albumId)->order('page_number', 'asc')->select();
+        try {
+            AlbumSnapshotService::createSnapshot($albumId, $request->uid, '删除页面前快照', $album, $allPages);
+        } catch (\Exception $e) {
+            Log::warning("创建快照失败: album_id={$albumId}, error=" . $e->getMessage());
+        }
+
         $pageNumber = $page->page_number;
         $page->delete();
 
@@ -119,6 +143,13 @@ class AlbumPageController
         $pages = $request->post('pages', []);
         if (empty($pages)) {
             return json_error('排序数据不能为空');
+        }
+
+        $allPages = AlbumPage::where('album_id', $albumId)->order('page_number', 'asc')->select();
+        try {
+            AlbumSnapshotService::createSnapshot($albumId, $request->uid, '页面前快照', $album, $allPages);
+        } catch (\Exception $e) {
+            Log::warning("创建快照失败: album_id={$albumId}, error=" . $e->getMessage());
         }
 
         foreach ($pages as $index => $pageData) {

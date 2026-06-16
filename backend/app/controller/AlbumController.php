@@ -4,12 +4,14 @@ namespace app\controller;
 
 use app\model\Album;
 use app\model\AlbumPage;
+use app\model\AlbumSnapshot;
 use app\model\AlbumCategory;
 use app\model\AlbumFavorite;
 use app\model\AccessLog;
 use app\model\MemberLevel;
 use app\model\DailyQuota;
 use app\model\User;
+use app\service\AlbumSnapshotService;
 use think\facade\Db;
 use think\facade\Log;
 use think\facade\Validate;
@@ -128,6 +130,7 @@ class AlbumController
         $album->qrcode_image_url = $album->qrcode_image ? get_upload_url($album->qrcode_image) : '';
         $album->qrcode_logo_url = $album->qrcode_logo ? get_upload_url($album->qrcode_logo) : '';
         $album->favorite_count = AlbumFavorite::where('album_id', $id)->count();
+        $album->current_version = AlbumSnapshot::where('album_id', $id)->max('version') ?: 0;
 
         $pages = $album->pages->each(function ($page) {
             $page->image_url = $page->image ? get_upload_url($page->image) : '';
@@ -408,6 +411,22 @@ class AlbumController
 
         $data = getRequestData($request);
 
+        if (!empty($data['expected_version'])) {
+            if (!AlbumSnapshotService::checkVersionConflict($id, (int)$data['expected_version']) {
+                return json_error('画册已被其他人修改，请刷新后重试', 409, [
+                    'conflict' => true,
+                    'current_version' => AlbumSnapshot::where('album_id', $id)->max('version') ?: 0,
+                ]);
+            }
+        }
+
+        $pages = AlbumPage::where('album_id', $id)->order('page_number', 'asc')->select();
+        try {
+            $snapshot = AlbumSnapshotService::createSnapshot($id, $request->uid, '编辑保存前快照', $album, $pages);
+        } catch (\Exception $e) {
+            Log::warning("创建快照失败: album_id={$id}, error=" . $e->getMessage());
+        }
+
         if (isset($data['title'])) {
             if (empty($data['title']) || mb_strlen($data['title']) > 200) {
                 return json_error('画册标题长度为1-200个字符');
@@ -430,6 +449,8 @@ class AlbumController
         $album->save();
 
         Log::info("更新画册: {$album->title} (ID: {$album->id}) by user {$request->uid}");
+
+        $album->current_version = isset($snapshot) ? $snapshot->version : (AlbumSnapshot::where('album_id', $id)->max('version') ?: 0);
 
         return json_success($album, '画册更新成功');
     }

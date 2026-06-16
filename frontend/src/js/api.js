@@ -165,6 +165,12 @@ const api = {
         backgrounds: () => apiRequest('/admin/backgrounds'),
         addBackground: (data) => apiRequest('/admin/backgrounds', { method: 'POST', body: data }),
         deleteBackground: (id) => apiRequest(`/admin/backgrounds/${id}`, { method: 'DELETE' }),
+
+        snapshots: (albumId, params) => apiRequest(`/admin/albums/${albumId}/snapshots?` + new URLSearchParams(params || {})),
+        snapshotDetail: (albumId, id) => apiRequest(`/admin/albums/${albumId}/snapshots/${id}`),
+        snapshotDiff: (albumId, snapshotId1, snapshotId2) => apiRequest(`/admin/albums/${albumId}/snapshots/diff?snapshot_id_1=${snapshotId1}&snapshot_id_2=${snapshotId2}`),
+        rollbackSnapshot: (albumId, snapshotId) => apiRequest(`/admin/albums/${albumId}/snapshots/rollback`, { method: 'POST', body: { snapshot_id: snapshotId } }),
+        createSnapshot: (albumId, remark) => apiRequest(`/admin/albums/${albumId}/snapshots`, { method: 'POST', body: { remark: remark || '' } }),
     },
     bookmarks: {
         list: (albumId) => apiRequest(`/bookmarks/albums/${albumId}`),

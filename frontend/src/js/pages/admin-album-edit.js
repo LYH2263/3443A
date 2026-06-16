@@ -260,6 +260,11 @@ function renderAlbumEditForm(id) {
                         ${id ? `<button class="btn btn-secondary" onclick="generateQrcode(${id})" style="width:100%;margin-bottom:16px" id="qr-gen-btn">&#128290; 生成二维码</button>` : '<p style="font-size:13px;color:var(--gray-400)">请先保存画册后生成二维码</p>'}
                         <div id="qrcode-preview">${qrcodePreview}</div>
                         <hr style="margin:20px 0;border:none;border-top:1px solid var(--gray-200)">
+                        ${id ? `
+                            <button class="btn btn-outline-secondary" onclick="openHistoryDrawer()" style="width:100%;margin-bottom:12px">
+                                &#128197; 历史版本
+                            </button>
+                        ` : ''}
                         <button class="btn btn-primary btn-lg" onclick="saveAlbum(${id || 'null'})" style="width:100%" id="save-album-btn">
                             ${id ? '&#128190; 保存修改' : '&#43; 创建画册'}
                         </button>
@@ -378,9 +383,16 @@ async function saveAlbum(id) {
     if (window._albumBgPath) data.background_image = window._albumBgPath;
     if (window._albumLogoPath) data.qrcode_logo = window._albumLogoPath;
 
+    if (id && editAlbumState.album && editAlbumState.album.current_version !== undefined) {
+        data.expected_version = editAlbumState.album.current_version;
+    }
+
     try {
         if (id) {
-            await api.admin.updateAlbum(id, data);
+            const res = await api.admin.updateAlbum(id, data);
+            if (res.data && res.data.current_version !== undefined) {
+                editAlbumState.album.current_version = res.data.current_version;
+            }
             showToast('画册更新成功', 'success');
             window._albumCoverPath = null;
             window._albumBgPath = null;
@@ -391,6 +403,9 @@ async function saveAlbum(id) {
             window.location.hash = `#/admin/albums/edit/${res.data.id}`;
         }
     } catch (e) {
+        if (e.code === 409 && e.data && e.data.conflict) {
+            showToast('画册已被其他人修改，请刷新后重试', 'error');
+        }
     } finally {
         btn.disabled = false;
         btn.innerHTML = id ? '&#128190; 保存修改' : '&#43; 创建画册';
@@ -532,4 +547,342 @@ function initWatermarkPreview() {
     if (canvas) {
         setTimeout(() => updateWatermarkPreview(), 50);
     }
+}
+
+let historyState = {
+    snapshots: [],
+    selectedSnapshot: null,
+    diffSnapshot: null,
+    diffData: null,
+    viewMode: 'list',
+    isLoading: false,
+    page: 1,
+    limit: 20,
+    total: 0,
+};
+
+function openHistoryDrawer() {
+    const hash = window.location.hash;
+    const match = hash.match(/\/admin\/albums\/edit\/(\d+)/);
+    if (!match) return;
+    const albumId = match[1];
+
+    const drawerHTML = `
+        <div class="drawer-overlay" id="history-drawer-overlay" onclick="closeHistoryDrawer()">
+        </div>
+        <div class="drawer" id="history-drawer">
+            <div class="drawer-header">
+                <h3>&#128197; 历史版本</h3>
+                <button class="btn btn-sm btn-ghost" onclick="closeHistoryDrawer()">&times;</button>
+            </div>
+            <div class="drawer-body" id="history-drawer-body">
+                ${renderLoading()}
+            </div>
+            <div class="drawer-footer">
+                <button class="btn btn-sm btn-secondary" onclick="closeHistoryDrawer()">关闭</button>
+                <button class="btn btn-sm btn-primary" onclick="createManualSnapshot()" id="create-snapshot-btn">
+                    &#43; 保存当前为版本
+                </button>
+            </div>
+        </div>
+    `;
+
+    const oldDrawer = document.getElementById('history-drawer');
+    if (oldDrawer) oldDrawer.remove();
+    const oldOverlay = document.getElementById('history-drawer-overlay');
+    if (oldOverlay) oldOverlay.remove();
+
+    document.body.insertAdjacentHTML('beforeend', drawerHTML);
+
+    setTimeout(() => {
+        document.getElementById('history-drawer').classList.add('drawer-open');
+        document.getElementById('history-drawer-overlay').classList.add('drawer-overlay-open');
+    }, 10);
+
+    loadSnapshots(albumId);
+}
+
+function closeHistoryDrawer() {
+    const drawer = document.getElementById('history-drawer');
+    const overlay = document.getElementById('history-drawer-overlay');
+    if (drawer) {
+        drawer.classList.remove('drawer-open');
+        setTimeout(() => drawer.remove(), 300);
+    }
+    if (overlay) {
+        overlay.classList.remove('drawer-overlay-open');
+        setTimeout(() => overlay.remove(), 300);
+    }
+    historyState.viewMode = 'list';
+    historyState.selectedSnapshot = null;
+    historyState.diffSnapshot = null;
+    historyState.diffData = null;
+}
+
+async function loadSnapshots(albumId) {
+    historyState.isLoading = true;
+    const body = document.getElementById('history-drawer-body');
+    if (body) body.innerHTML = renderLoading();
+
+    try {
+        const res = await api.admin.snapshots(albumId, { page: historyState.page, limit: historyState.limit });
+        historyState.snapshots = res.data.list || [];
+        historyState.total = res.data.total || 0;
+        historyState.viewMode = 'list';
+        renderSnapshotList();
+    } catch (e) {
+        if (body) body.innerHTML = renderEmpty('加载失败');
+    } finally {
+        historyState.isLoading = false;
+    }
+}
+
+function renderSnapshotList() {
+    const body = document.getElementById('history-drawer-body');
+    if (!body) return;
+
+    const snapshots = historyState.snapshots;
+
+    if (snapshots.length === 0) {
+        body.innerHTML = renderEmpty('暂无历史版本');
+        return;
+    }
+
+    body.innerHTML = `
+        <div style="margin-bottom:12px;font-size:13px;color:var(--gray-500)">
+            共 ${historyState.total} 个版本，保留最近 20 个
+        </div>
+        <div class="timeline">
+            ${snapshots.map((s, i) => `
+                <div class="timeline-item ${i === 0 ? 'timeline-item-latest' : ''}">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-header">
+                            <span class="timeline-version">v${s.version}</span>
+                            ${i === 0 ? '<span class="tag tag-primary">当前</span>' : ''}
+                            ${s.remark ? `<span class="timeline-remark">${escapeHtml(s.remark)}</span>` : ''}
+                        </div>
+                        <div class="timeline-meta">
+                            <span>&#128100; ${escapeHtml(s.operator_name || '未知')}</span>
+                            <span>&#128190; ${formatDateTime(s.created_at)}</span>
+                            <span>&#128221; ${s.page_count} 页</span>
+                            <span>&#128202; ${s.size_kb} KB</span>
+                        </div>
+                        <div class="timeline-actions">
+                            <button class="btn btn-xs btn-secondary" onclick="viewSnapshotDiff(${s.id})">
+                                &#128260; 查看差异
+                            </button>
+                            ${i !== 0 ? `
+                                <button class="btn btn-xs btn-warning" onclick="confirmRollback(${s.id}, ${s.version})">
+                                    &#8634; 回滚到此版本
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+async function viewSnapshotDiff(snapshotId) {
+    const hash = window.location.hash;
+    const match = hash.match(/\/admin\/albums\/edit\/(\d+)/);
+    if (!match) return;
+    const albumId = match[1];
+
+    const snapshots = historyState.snapshots;
+    const currentIdx = snapshots.findIndex(s => s.id === snapshotId);
+    if (currentIdx < 0 || currentIdx >= snapshots.length - 1) {
+        showToast('无法对比差异', 'warning');
+        return;
+    }
+
+    const prevSnapshotId = snapshots[currentIdx + 1].id;
+
+    const body = document.getElementById('history-drawer-body');
+    if (body) body.innerHTML = renderLoading();
+
+    try {
+        const res = await api.admin.snapshotDiff(albumId, prevSnapshotId, snapshotId);
+        historyState.diffData = res.data;
+        historyState.viewMode = 'diff';
+        renderDiffView();
+    } catch (e) {
+        showToast('加载差异失败', 'error');
+        historyState.viewMode = 'list';
+        renderSnapshotList();
+    }
+}
+
+function renderDiffView() {
+    const body = document.getElementById('history-drawer-body');
+    if (!body || !historyState.diffData) return;
+
+    const data = historyState.diffData;
+    const albumDiff = data.album_diff || [];
+    const pagesDiff = data.pages_diff || {};
+
+    body.innerHTML = `
+        <div style="margin-bottom:16px">
+            <button class="btn btn-sm btn-ghost" onclick="backToList()">
+                &#8592; 返回版本列表
+            </button>
+        </div>
+        <div class="diff-header">
+            <div class="diff-version-info">
+                <span class="diff-label">旧版本</span>
+                <span class="diff-version">v${data.snapshot1.version}</span>
+                <span class="diff-date">${formatDateTime(data.snapshot1.created_at)}</span>
+            </div>
+            <div class="diff-arrow">&#8594;</div>
+            <div class="diff-version-info">
+                <span class="diff-label diff-label-new">新版本</span>
+                <span class="diff-version">v${data.snapshot2.version}</span>
+                <span class="diff-date">${formatDateTime(data.snapshot2.created_at)}</span>
+            </div>
+        </div>
+
+        <div class="diff-section">
+            <h4>画册基本信息 (${albumDiff.length} 项变更)</h4>
+            ${albumDiff.length === 0 ? '<div style="color:var(--gray-400);font-size:13px">无变更</div>' : ''}
+            <div class="diff-fields">
+                ${albumDiff.map(item => `
+                    <div class="diff-field-item">
+                        <div class="diff-field-label">${escapeHtml(item.label)}</div>
+                        <div class="diff-field-values">
+                            <div class="diff-old-value">${escapeHtml(String(item.old_value || '(空)'))}</div>
+                            <div class="diff-arrow">&#8594;</div>
+                            <div class="diff-new-value">${escapeHtml(String(item.new_value || '(空)'))}</div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+
+        <div class="diff-section">
+            <h4>页面变更 (${pagesDiff.summary || ''})</h4>
+            
+            ${(pagesDiff.added && pagesDiff.added.length > 0) ? `
+                <div class="diff-subsection">
+                    <div class="diff-subtitle diff-add-title">&#10133; 新增页面 (${pagesDiff.added.length})</div>
+                    <div class="diff-page-list">
+                        ${pagesDiff.added.map(p => `
+                            <div class="diff-page-item diff-page-added">
+                                <span class="diff-page-number">第${p.page_number}页</span>
+                                <span class="diff-page-title">${escapeHtml(p.title || '(无标题)')}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+
+            ${(pagesDiff.removed && pagesDiff.removed.length > 0) ? `
+                <div class="diff-subsection">
+                    <div class="diff-subtitle diff-del-title">&#10134; 删除页面 (${pagesDiff.removed.length})</div>
+                    <div class="diff-page-list">
+                        ${pagesDiff.removed.map(p => `
+                            <div class="diff-page-item diff-page-removed">
+                                <span class="diff-page-number">第${p.page_number}页</span>
+                                <span class="diff-page-title">${escapeHtml(p.title || '(无标题)')}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+
+            ${(pagesDiff.modified && pagesDiff.modified.length > 0) ? `
+                <div class="diff-subsection">
+                    <div class="diff-subtitle diff-mod-title">&#9998; 修改页面 (${pagesDiff.modified.length})</div>
+                    <div class="diff-page-list">
+                        ${pagesDiff.modified.map(p => `
+                            <div class="diff-page-item diff-page-modified">
+                                <span class="diff-page-number">第${p.page_number}页</span>
+                                <span class="diff-page-title">
+                                    ${escapeHtml(p.old_title || '(无)')}
+                                    &rarr;
+                                    ${escapeHtml(p.new_title || '(无)')}
+                                </span>
+                                <div class="diff-page-changes">
+                                    ${(p.changes || []).map(c => `
+                                        <span class="diff-change-tag">${escapeHtml(c.field)}</span>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+
+            ${(!pagesDiff.added || pagesDiff.added.length === 0) &&
+              (!pagesDiff.removed || pagesDiff.removed.length === 0) &&
+              (!pagesDiff.modified || pagesDiff.modified.length === 0)
+                ? '<div style="color:var(--gray-400);font-size:13px">页面无变更</div>' : ''}
+        </div>
+    `;
+}
+
+function backToList() {
+    historyState.viewMode = 'list';
+    historyState.diffData = null;
+    renderSnapshotList();
+}
+
+function confirmRollback(snapshotId, version) {
+    showConfirmModal(
+        '回滚版本',
+        `确定要回滚到版本 v${version} 吗？<br><br>回滚操作会先生成当前状态的快照，然后恢复到目标版本。您可以随时从历史版本中撤销此次回滚。`,
+        async () => {
+            const hash = window.location.hash;
+            const match = hash.match(/\/admin\/albums\/edit\/(\d+)/);
+            if (!match) return;
+            const albumId = match[1];
+
+            try {
+                const res = await api.admin.rollbackSnapshot(albumId, snapshotId);
+                showToast('回滚成功', 'success');
+                closeHistoryDrawer();
+                initAdminAlbumEdit(albumId);
+            } catch (e) {}
+        }
+    );
+}
+
+async function createManualSnapshot() {
+    const hash = window.location.hash;
+    const match = hash.match(/\/admin\/albums\/edit\/(\d+)/);
+    if (!match) return;
+    const albumId = match[1];
+
+    const btn = document.getElementById('create-snapshot-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '&#8987; 保存中...';
+    }
+
+    try {
+        const remark = prompt('请输入版本备注（可选）：', '');
+        if (remark === null) return;
+
+        const res = await api.admin.createSnapshot(albumId, remark || '手动保存快照');
+        showToast('快照创建成功', 'success');
+        loadSnapshots(albumId);
+        if (editAlbumState.album) {
+            editAlbumState.album.current_version = res.data.version;
+        }
+    } catch (e) {
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '&#43; 保存当前为版本';
+        }
+    }
+}
+
+function formatDateTime(str) {
+    if (!str) return '';
+    const d = new Date(str);
+    if (isNaN(d.getTime())) return str;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
