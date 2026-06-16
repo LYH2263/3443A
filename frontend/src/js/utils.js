@@ -102,3 +102,130 @@ function getLogoSvg() {
 function getPlaceholderImage() {
     return `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect fill='%23f3f4f6' width='400' height='300'/%3E%3Ctext fill='%239ca3af' font-family='sans-serif' font-size='18' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3E暂无图片%3C/text%3E%3C/svg%3E`;
 }
+
+const PROGRESS_STORAGE_KEY = 'flipbook_read_progress';
+
+function getAllLocalProgress() {
+    try {
+        const raw = localStorage.getItem(PROGRESS_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function saveAllLocalProgress(progressMap) {
+    try {
+        localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progressMap));
+    } catch (e) {}
+}
+
+function getLocalProgress(albumId) {
+    const all = getAllLocalProgress();
+    const item = all[albumId];
+    if (!item) return null;
+
+    const totalPages = item.total_pages || 0;
+    let currentPage = item.current_page || 1;
+    if (totalPages > 0 && currentPage > totalPages) {
+        currentPage = totalPages;
+    }
+    if (currentPage < 1) currentPage = 1;
+
+    return {
+        album_id: parseInt(albumId),
+        current_page: currentPage,
+        total_pages: totalPages,
+        is_completed: totalPages > 0 && currentPage >= totalPages,
+        last_read_at: item.last_read_at || null,
+    };
+}
+
+function saveLocalProgress(albumId, currentPage, totalPages) {
+    const all = getAllLocalProgress();
+    if (totalPages > 0 && currentPage > totalPages) {
+        currentPage = totalPages;
+    }
+    if (currentPage < 1) currentPage = 1;
+
+    all[albumId] = {
+        album_id: parseInt(albumId),
+        current_page: currentPage,
+        total_pages: totalPages,
+        is_completed: totalPages > 0 && currentPage >= totalPages,
+        last_read_at: new Date().toISOString(),
+    };
+    saveAllLocalProgress(all);
+    return all[albumId];
+}
+
+function correctLocalProgressPage(albumId, actualTotalPages) {
+    const all = getAllLocalProgress();
+    const item = all[albumId];
+    if (!item) return null;
+
+    let currentPage = item.current_page || 1;
+    if (actualTotalPages > 0 && currentPage > actualTotalPages) {
+        currentPage = actualTotalPages;
+    }
+    if (currentPage < 1) currentPage = 1;
+
+    item.current_page = currentPage;
+    item.total_pages = actualTotalPages;
+    item.is_completed = actualTotalPages > 0 && currentPage >= actualTotalPages;
+    all[albumId] = item;
+    saveAllLocalProgress(all);
+    return item;
+}
+
+function clearLocalProgress(albumId) {
+    const all = getAllLocalProgress();
+    if (all[albumId]) {
+        delete all[albumId];
+        saveAllLocalProgress(all);
+    }
+}
+
+function getUnfinishedLocalProgressList() {
+    const all = getAllLocalProgress();
+    const list = [];
+    for (const albumId in all) {
+        const item = all[albumId];
+        if (!item.is_completed) {
+            list.push({
+                album_id: parseInt(albumId),
+                current_page: item.current_page,
+                total_pages: item.total_pages,
+                last_read_at: item.last_read_at,
+            });
+        }
+    }
+    list.sort((a, b) => {
+        const ta = a.last_read_at ? new Date(a.last_read_at).getTime() : 0;
+        const tb = b.last_read_at ? new Date(b.last_read_at).getTime() : 0;
+        return tb - ta;
+    });
+    return list.slice(0, 20);
+}
+
+async function mergeLocalProgressToCloud() {
+    if (!isLoggedIn()) return { merged: 0, updated: 0 };
+
+    const localList = Object.values(getAllLocalProgress());
+    if (localList.length === 0) return { merged: 0, updated: 0 };
+
+    try {
+        const res = await api.progress.merge(localList);
+        return res.data;
+    } catch (e) {
+        return { merged: 0, updated: 0 };
+    }
+}
+
+function normalizeFlipbookPage(page, totalPages, isDoublePageMode) {
+    if (!isDoublePageMode) {
+        return Math.max(1, Math.min(totalPages || 1, page));
+    }
+    const normalized = Math.ceil(page / 2);
+    return Math.max(1, Math.min(totalPages || 1, normalized));
+}

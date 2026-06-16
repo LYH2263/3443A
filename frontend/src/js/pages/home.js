@@ -1,4 +1,4 @@
-let homeState = { albums: [], categories: [], page: 1, total: 0, limit: 12, categoryId: '', keyword: '' };
+let homeState = { albums: [], categories: [], page: 1, total: 0, limit: 12, categoryId: '', keyword: '', progressMap: {} };
 
 function renderHomePage() {
     return `
@@ -80,6 +80,30 @@ async function loadHomeAlbums() {
             return;
         }
 
+        const albumIds = homeState.albums.map(a => a.id);
+        homeState.progressMap = {};
+        try {
+            if (isLoggedIn()) {
+                const progressRes = await api.progress.batch(albumIds);
+                if (progressRes.data) {
+                    homeState.progressMap = progressRes.data;
+                }
+            } else {
+                    albumIds.forEach(id => {
+                        const lp = getLocalProgress(id);
+                        if (lp && lp.total_pages > 0 && !lp.is_completed) {
+                            homeState.progressMap[id] = {
+                                album_id: id,
+                                current_page: lp.current_page,
+                                total_pages: lp.total_pages,
+                                progress: Math.min(100, Math.round((lp.current_page / lp.total_pages) * 100)),
+                                is_completed: lp.is_completed,
+                            };
+                        }
+                    });
+                }
+        } catch (e) {}
+
         let html = '<div class="albums-grid">';
         homeState.albums.forEach(album => {
             const coverUrl = album.cover_image_url ? getImageUrl(album.cover_image_url) : getPlaceholderImage();
@@ -87,6 +111,23 @@ async function loadHomeAlbums() {
                 ? `<span class="album-card-lock">&#128274; 会员专属</span>` : '';
             const pwdBadge = album.has_password
                 ? `<span class="badge badge-warning" style="font-size:11px">密码访问</span>` : '';
+
+            const progress = homeState.progressMap[album.id];
+            let progressHtml = '';
+            if (progress && !progress.is_completed && progress.current_page > 1) {
+                const total = progress.total_pages || album.page_count || 0;
+                if (total > 0) {
+                    const pct = Math.min(100, Math.round((progress.current_page / total) * 100));
+                    progressHtml = `
+                        <div class="album-progress-wrap">
+                            <div class="album-progress-bar">
+                                <div class="album-progress-fill" style="width:${pct}%"></div>
+                            </div>
+                            <div class="album-progress-text">读至第 ${progress.current_page}/${total} 页 · ${pct}%</div>
+                        </div>
+                    `;
+                }
+            }
 
             html += `
                 <div class="album-card" onclick="viewAlbum(${album.id})">
@@ -102,6 +143,7 @@ async function loadHomeAlbums() {
                             <span>&#128196; ${album.page_count || 0} 页</span>
                             <span>&#128065; ${album.view_count || 0} 次浏览</span>
                         </div>
+                        ${progressHtml}
                     </div>
                 </div>
             `;

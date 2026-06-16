@@ -1,5 +1,7 @@
 let profileTab = 'info';
 let profileQuotaCache = null;
+let continueReadingList = [];
+let continueReadingLoading = false;
 
 function formatQuotaDisplay(quota) {
     if (!quota) return '';
@@ -41,9 +43,10 @@ function renderProfilePage() {
                     <div class="profile-tabs">
                         <button class="profile-tab ${profileTab === 'info' ? 'active' : ''}" onclick="switchProfileTab('info')">个人信息</button>
                         <button class="profile-tab ${profileTab === 'password' ? 'active' : ''}" onclick="switchProfileTab('password')">修改密码</button>
+                        <button class="profile-tab ${profileTab === 'continue' ? 'active' : ''}" onclick="switchProfileTab('continue')">继续阅读</button>
                     </div>
                     <div id="profile-tab-content">
-                        ${profileTab === 'info' ? renderProfileInfoTab(user) : renderProfilePasswordTab()}
+                        ${profileTab === 'info' ? renderProfileInfoTab(user) : profileTab === 'password' ? renderProfilePasswordTab() : renderContinueReadingTab()}
                     </div>
                 </div>
             </div>
@@ -61,7 +64,14 @@ function switchProfileTab(tab) {
     document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
 
-    content.innerHTML = tab === 'info' ? renderProfileInfoTab(user) : renderProfilePasswordTab();
+    if (tab === 'info') {
+        content.innerHTML = renderProfileInfoTab(user);
+    } else if (tab === 'password') {
+        content.innerHTML = renderProfilePasswordTab();
+    } else if (tab === 'continue') {
+        content.innerHTML = renderContinueReadingTab();
+        loadContinueReadingList();
+    }
 }
 
 function renderProfileInfoTab(user) {
@@ -237,4 +247,134 @@ async function handleChangePassword(event) {
         btn.disabled = false;
         btn.textContent = '修改密码';
     }
+}
+
+function renderContinueReadingTab() {
+    return `
+        <div class="continue-reading-wrap">
+            <div class="continue-reading-header">
+                <h3>&#128214; 继续阅读</h3>
+                <p style="color:var(--gray-500);font-size:13px;margin:4px 0 0 0">按最近阅读时间倒序展示未读完的画册，点击一键续读</p>
+            </div>
+            <div id="continue-reading-list">
+                ${continueReadingLoading ? renderLoading() : ''}
+            </div>
+        </div>
+    `;
+}
+
+async function loadContinueReadingList() {
+    const listEl = document.getElementById('continue-reading-list');
+    if (!listEl) return;
+
+    continueReadingLoading = true;
+    listEl.innerHTML = renderLoading();
+
+    try {
+        let list = [];
+        if (isLoggedIn()) {
+            const res = await api.progress.myUnfinished();
+            list = res.data || [];
+        } else {
+            const localList = getUnfinishedLocalProgressList();
+            const albumIds = localList.map(i => i.album_id);
+            if (albumIds.length > 0) {
+                try {
+                    const params = { page: 1, limit: albumIds.length };
+                    const albumsRes = await api.public.albums(params);
+                    const allAlbums = (albumsRes.data.list || []).filter(a => albumIds.includes(a.id));
+                    const albumMap = {};
+                    allAlbums.forEach(a => { albumMap[a.id] = a; });
+
+                    list = localList.map(item => {
+                        const album = albumMap[item.album_id];
+                        if (!album) return null;
+                        const total = item.total_pages || album.page_count || 0;
+                        return {
+                            album: {
+                                id: album.id,
+                                title: album.title,
+                                description: album.description,
+                                cover_image_url: album.cover_image_url,
+                                page_count: total,
+                                view_count: album.view_count,
+                                category: album.category,
+                            },
+                            progress: {
+                                current_page: item.current_page,
+                                total_pages: total,
+                                percent: total > 0 ? Math.min(100, Math.round((item.current_page / total) * 100)) : 0,
+                                last_read_at: item.last_read_at,
+                            }
+                        };
+                    }).filter(Boolean);
+                } catch (e) {}
+            }
+        }
+
+        continueReadingList = list;
+        renderContinueReadingListItems();
+    } catch (e) {
+        listEl.innerHTML = renderEmpty('加载失败，请稍后重试');
+    } finally {
+        continueReadingLoading = false;
+    }
+}
+
+function renderContinueReadingListItems() {
+    const listEl = document.getElementById('continue-reading-list');
+    if (!listEl) return;
+
+    if (continueReadingList.length === 0) {
+        listEl.innerHTML = renderEmpty('暂无未读完的画册，去首页发现精彩内容吧！', '&#128064;');
+        const goHomeBtn = document.createElement('button');
+        goHomeBtn.className = 'btn btn-primary';
+        goHomeBtn.textContent = '去首页看看';
+        goHomeBtn.style.marginTop = '16px';
+        goHomeBtn.onclick = () => { window.location.hash = '#/'; };
+        const emptyState = listEl.querySelector('.empty-state');
+        if (emptyState) emptyState.appendChild(goHomeBtn);
+        return;
+    }
+
+    let html = '<div class="continue-reading-grid">';
+    continueReadingList.forEach(item => {
+        const album = item.album;
+        const progress = item.progress;
+        if (!album || !progress) return;
+
+        const coverUrl = album.cover_image_url ? getImageUrl(album.cover_image_url) : getPlaceholderImage();
+        const pct = progress.percent || 0;
+        const currentPage = progress.current_page || 1;
+        const totalPages = progress.total_pages || album.page_count || 0;
+        const lastReadText = progress.last_read_at ? formatDateTime(progress.last_read_at) : '';
+
+        html += `
+            <div class="continue-reading-card" onclick="continueReadAlbum(${album.id})">
+                <div class="continue-reading-cover">
+                    <img src="${coverUrl}" alt="${escapeHtml(album.title)}" onerror="this.src='${getPlaceholderImage()}'">
+                    <div class="continue-reading-progress-overlay">
+                        <div class="continue-reading-progress-bar">
+                            <div class="continue-reading-progress-fill" style="width:${pct}%"></div>
+                        </div>
+                        <div class="continue-reading-progress-text">${pct}%</div>
+                    </div>
+                </div>
+                <div class="continue-reading-info">
+                    <div class="continue-reading-title">${escapeHtml(album.title)}</div>
+                    <div class="continue-reading-pages">读至第 ${currentPage} / ${totalPages} 页</div>
+                    ${lastReadText ? `<div class="continue-reading-time">&#128336; ${lastReadText}</div>` : ''}
+                    <button class="btn btn-primary btn-sm continue-reading-btn" onclick="event.stopPropagation();continueReadAlbum(${album.id})">
+                        &#9654; 继续阅读
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    listEl.innerHTML = html;
+}
+
+function continueReadAlbum(albumId) {
+    window.location.hash = `#/viewer/${albumId}`;
 }

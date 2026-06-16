@@ -89,7 +89,18 @@ async function handleRegister(event) {
         const res = await api.auth.register({ username, nickname, email, phone, password });
         setToken(res.data.token);
         setUser(res.data.user);
-        showToast('注册成功', 'success');
+
+        try {
+            const mergeResult = await mergeLocalProgressToCloud();
+            if (mergeResult && (mergeResult.merged > 0 || mergeResult.updated > 0)) {
+                showToast(`注册成功，已同步 ${mergeResult.merged + mergeResult.updated} 条阅读进度`, 'success');
+            } else {
+                showToast('注册成功', 'success');
+            }
+        } catch (e) {
+            showToast('注册成功', 'success');
+        }
+
         window.location.hash = '#/';
     } catch (e) {
         // handled by api

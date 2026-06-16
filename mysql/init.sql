@@ -185,6 +185,23 @@ INSERT INTO `album_pages` (`album_id`, `page_number`, `image`, `title`, `sort_or
 (3, 3, '/images/a3-p3.png', '颁奖典礼', 2),
 (3, 4, '/images/a3-p4.png', '晚宴盛况', 3);
 
+-- 画册阅读进度表
+CREATE TABLE IF NOT EXISTS `album_read_progress` (
+  `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '用户ID，0表示访客',
+  `visitor_key` VARCHAR(64) DEFAULT '' COMMENT '访客唯一标识（IP+UA哈希），仅访客使用',
+  `album_id` INT UNSIGNED NOT NULL COMMENT '画册ID',
+  `current_page` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '当前页码（归一化后的单页序号）',
+  `total_pages` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '画册总页数（记录时的快照）',
+  `is_completed` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已读完 0未读完 1已读完',
+  `last_read_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后阅读时间',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_user_album` (`user_id`, `album_id`),
+  UNIQUE KEY `uk_visitor_album` (`visitor_key`, `album_id`),
+  KEY `idx_user_last_read` (`user_id`, `last_read_at`),
+  KEY `idx_visitor_last_read` (`visitor_key`, `last_read_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='画册阅读进度表';
+
 -- 初始化背景图片库
 INSERT INTO `background_images` (`name`, `path`, `category`, `created_at`) VALUES
 ('商务蓝色科技', '/images/bg1.png', 'default', NOW()),

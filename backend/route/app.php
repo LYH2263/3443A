@@ -35,6 +35,19 @@ Route::group('api/public', function () {
     Route::get('quota', 'AlbumController@publicQuota');
 })->prefix('app\\controller\\')->middleware(\app\middleware\CorsMiddleware::class);
 
+// Reading Progress routes (public for get, login required for merge)
+Route::group('api/progress', function () {
+    Route::get('albums/:albumId', 'ReadingProgressController@getProgress')->pattern(['albumId' => '\d+']);
+    Route::post('albums/:albumId', 'ReadingProgressController@saveProgress')->pattern(['albumId' => '\d+']);
+    Route::post('batch', 'ReadingProgressController@batchGetProgress');
+    Route::get('my/unfinished', 'ReadingProgressController@myUnfinishedList');
+})->prefix('app\\controller\\')->middleware(\app\middleware\CorsMiddleware::class);
+
+// Reading Progress routes (require login)
+Route::group('api/progress', function () {
+    Route::post('merge', 'ReadingProgressController@mergeLocalProgress');
+})->prefix('app\\controller\\')->middleware([\app\middleware\CorsMiddleware::class, \app\middleware\AuthMiddleware::class]);
+
 // Bookmark routes (require login, any user)
 Route::group('api/bookmarks', function () {
     Route::get('albums/:albumId', 'BookmarkController@index');

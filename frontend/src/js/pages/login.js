@@ -44,7 +44,17 @@ async function handleLogin(event) {
         const res = await api.auth.login({ username, password });
         setToken(res.data.token);
         setUser(res.data.user);
-        showToast('登录成功', 'success');
+
+        try {
+            const mergeResult = await mergeLocalProgressToCloud();
+            if (mergeResult && (mergeResult.merged > 0 || mergeResult.updated > 0)) {
+                showToast(`登录成功，已同步 ${mergeResult.merged + mergeResult.updated} 条阅读进度`, 'success');
+            } else {
+                showToast('登录成功', 'success');
+            }
+        } catch (e) {
+            showToast('登录成功', 'success');
+        }
 
         if (res.data.user.role === 'admin') {
             window.location.hash = '#/admin';

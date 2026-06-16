@@ -171,6 +171,13 @@ const api = {
         remove: (albumId, id) => apiRequest(`/bookmarks/albums/${albumId}/${id}`, { method: 'DELETE' }),
         toggle: (albumId, pageNumber) => apiRequest(`/bookmarks/albums/${albumId}/toggle`, { method: 'POST', body: { page_number: pageNumber } }),
     },
+    progress: {
+        get: (albumId) => apiRequest(`/progress/albums/${albumId}`),
+        save: (albumId, currentPage, totalPages) => apiRequest(`/progress/albums/${albumId}`, { method: 'POST', body: { current_page: currentPage, total_pages: totalPages } }),
+        batch: (albumIds) => apiRequest(`/progress/batch`, { method: 'POST', body: { album_ids: albumIds } }),
+        myUnfinished: () => apiRequest(`/progress/my/unfinished`),
+        merge: (progressList) => apiRequest(`/progress/merge`, { method: 'POST', body: { progress_list: progressList } }),
+    },
     upload: {
         image: async (file, type = 'albums') => {
             const formData = new FormData();

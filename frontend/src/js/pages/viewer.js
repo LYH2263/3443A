@@ -1,8 +1,80 @@
 let viewerState = {
     album: null, pages: [], currentPage: 1, needPassword: false, flipbookReady: false,
     watermark: null, viewerInfo: null, sidebarOpen: true, bookmarks: new Set(),
-    focusedThumbIndex: -1, albumId: null
+    focusedThumbIndex: -1, albumId: null, savedProgress: null, isDoublePageMode: false
 };
+
+const saveProgressDebounced = debounce(async (albumId, page, total) => {
+    try {
+        if (isLoggedIn()) {
+            await api.progress.save(albumId, page, total);
+        }
+    } catch (e) {}
+    saveLocalProgress(albumId, page, total);
+}, 500);
+
+function showProgressRestoreToast(page) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const icons = {
+        success: '&#10004;',
+        error: '&#10006;',
+        warning: '&#9888;',
+        info: '&#8505;'
+    };
+
+    const toast = document.createElement('div');
+    toast.className = 'toast info progress-restore-toast';
+    toast.innerHTML = `
+        <span class="toast-icon">${icons.info}</span>
+        <span class="toast-message">已为你恢复到第 <strong>${page}</strong> 页，返回首页？</span>
+        <span class="toast-actions">
+            <button class="toast-action-btn" onclick="window.location.hash='#/'">返回首页</button>
+            <button class="toast-action-btn toast-action-close" onclick="this.closest('.toast').remove()">&times;</button>
+        </span>
+    `;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 300);
+    }, 6000);
+}
+
+async function loadProgressForAlbum(albumId, totalPages) {
+    let progress = null;
+
+    try {
+        if (isLoggedIn()) {
+            const res = await api.progress.get(albumId);
+            if (res.data && res.data.has_progress) {
+                progress = {
+                    current_page: res.data.current_page,
+                    total_pages: res.data.actual_total || totalPages,
+                    is_completed: res.data.is_completed,
+                };
+            }
+        }
+    } catch (e) {}
+
+    if (!progress) {
+        progress = getLocalProgress(albumId);
+    }
+
+    if (progress && totalPages > 0) {
+        let page = progress.current_page;
+        if (page > totalPages) page = totalPages;
+        if (page < 1) page = 1;
+        progress.current_page = page;
+        progress.total_pages = totalPages;
+
+        if (isLoggedIn()) {
+            correctLocalProgressPage(albumId, totalPages);
+        }
+    }
+
+    return progress;
+}
 
 function getBookmarkStorageKey(albumId) {
     return `flipbook_bookmarks_${albumId}`;
@@ -170,7 +242,7 @@ async function initViewerPage(id) {
             document.getElementById('viewer-password').style.display = 'flex';
             return;
         }
-        setupViewer(res.data);
+        await setupViewer(res.data);
     } catch (e) {
         if (e.code === 40301) {
             const info = e.data || {};
@@ -194,7 +266,7 @@ async function verifyAlbumPassword(id) {
             return;
         }
         document.getElementById('viewer-password').style.display = 'none';
-        setupViewer(res.data);
+        await setupViewer(res.data);
     } catch (e) {
         if (e.code === 40301) {
             const info = e.data || {};
@@ -204,7 +276,7 @@ async function verifyAlbumPassword(id) {
     }
 }
 
-function setupViewer(data) {
+async function setupViewer(data) {
     viewerState.album = data.album;
     viewerState.pages = data.pages || [];
     viewerState.watermark = data.album.watermark || null;
@@ -226,6 +298,14 @@ function setupViewer(data) {
     if (viewerState.pages.length === 0) {
         document.getElementById('flipbook-wrapper').innerHTML = renderEmpty('该画册暂无页面内容');
         return;
+    }
+
+    const totalPages = viewerState.pages.length;
+    const savedProgress = await loadProgressForAlbum(viewerState.albumId, totalPages);
+    viewerState.savedProgress = savedProgress;
+
+    if (savedProgress && savedProgress.current_page > 1 && !savedProgress.is_completed) {
+        viewerState.currentPage = savedProgress.current_page;
     }
 
     const flipbook = document.getElementById('flipbook');
@@ -611,6 +691,10 @@ function initFlipbook() {
         height = width * 0.65;
     }
 
+    const startPage = viewerState.currentPage || 1;
+    const savedProgress = viewerState.savedProgress;
+    const shouldShowRestoreToast = savedProgress && savedProgress.current_page > 1 && !savedProgress.is_completed;
+
     flipbook.turn({
         width: width,
         height: height,
@@ -619,6 +703,7 @@ function initFlipbook() {
         gradients: true,
         duration: 1000,
         acceleration: true,
+        page: startPage,
         when: {
             turning: function (event, page, view) {
                 viewerState.currentPage = page;
@@ -627,6 +712,10 @@ function initFlipbook() {
             },
             turned: function (event, page, view) {
                 viewerState.currentPage = page;
+                const totalPages = viewerState.pages.length || 1;
+                const normalizedPage = normalizeFlipbookPage(page, totalPages, viewerState.isDoublePageMode);
+                saveProgressDebounced(viewerState.albumId, normalizedPage, totalPages);
+
                 updatePageIndicator();
                 highlightCurrentThumb();
                 updateBookmarkButton();
@@ -639,6 +728,12 @@ function initFlipbook() {
     updatePageIndicator();
     highlightCurrentThumb();
     updateBookmarkButton();
+
+    if (shouldShowRestoreToast) {
+        setTimeout(() => {
+            showProgressRestoreToast(savedProgress.current_page);
+        }, 800);
+    }
 
     setTimeout(() => {
         checkAndDrawWatermarks();
