@@ -75,6 +75,7 @@ async function loadAdminAlbums() {
                             <th>页数</th>
                             <th>等级要求</th>
                             <th>浏览量</th>
+                            <th>收藏数</th>
                             <th>状态</th>
                             <th>操作</th>
                         </tr>
@@ -92,6 +93,7 @@ async function loadAdminAlbums() {
                     <td>${album.page_count || 0}</td>
                     <td>${album.min_level > 0 ? `<span class="badge badge-warning">等级${album.min_level}</span>` : '<span class="badge badge-gray">公开</span>'}</td>
                     <td>${album.view_count || 0}</td>
+                    <td><span style="color:#D97706;font-weight:500">&#11088; ${album.favorite_count || 0}</span></td>
                     <td>${album.status === 1 ? '<span class="badge badge-success">已发布</span>' : '<span class="badge badge-gray">草稿</span>'}</td>
                     <td>
                         <div class="table-actions">

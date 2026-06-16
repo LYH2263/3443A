@@ -1,4 +1,4 @@
-let homeState = { albums: [], categories: [], page: 1, total: 0, limit: 12, categoryId: '', keyword: '', progressMap: {} };
+let homeState = { albums: [], categories: [], page: 1, total: 0, limit: 12, categoryId: '', keyword: '', progressMap: {}, favoriteMap: {} };
 
 function renderHomePage() {
     return `
@@ -82,11 +82,19 @@ async function loadHomeAlbums() {
 
         const albumIds = homeState.albums.map(a => a.id);
         homeState.progressMap = {};
+        homeState.favoriteMap = {};
         try {
             if (isLoggedIn()) {
-                const progressRes = await api.progress.batch(albumIds);
+                const [progressRes, favRes] = await Promise.all([
+                    api.progress.batch(albumIds),
+                    api.favorites.batchCheck(albumIds)
+                ]);
                 if (progressRes.data) {
                     homeState.progressMap = progressRes.data;
+                }
+                if (favRes.data && favRes.data.favorites) {
+                    homeState.favoriteMap = favRes.data.favorites;
+                    Object.assign(favoriteStateMap, favRes.data.favorites);
                 }
             } else {
                     albumIds.forEach(id => {
@@ -135,6 +143,9 @@ async function loadHomeAlbums() {
                         <img src="${coverUrl}" alt="${escapeHtml(album.title)}" onerror="this.src='${getPlaceholderImage()}'">
                         ${levelBadge}
                         <div class="album-card-badge">${pwdBadge}</div>
+                        <div class="album-card-favorite">
+                            ${renderFavoriteButton(album.id, { size: 'sm' })}
+                        </div>
                     </div>
                     <div class="album-card-body">
                         <div class="album-card-title">${escapeHtml(album.title)}</div>
@@ -142,6 +153,7 @@ async function loadHomeAlbums() {
                         <div class="album-card-meta">
                             <span>&#128196; ${album.page_count || 0} 页</span>
                             <span>&#128065; ${album.view_count || 0} 次浏览</span>
+                            <span>&#11088; ${album.favorite_count || 0}</span>
                         </div>
                         ${progressHtml}
                     </div>

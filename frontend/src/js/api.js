@@ -171,6 +171,13 @@ const api = {
         remove: (albumId, id) => apiRequest(`/bookmarks/albums/${albumId}/${id}`, { method: 'DELETE' }),
         toggle: (albumId, pageNumber) => apiRequest(`/bookmarks/albums/${albumId}/toggle`, { method: 'POST', body: { page_number: pageNumber } }),
     },
+    favorites: {
+        list: (params) => apiRequest('/favorites/albums?' + new URLSearchParams(params || {})),
+        check: (albumId) => apiRequest(`/favorites/albums/${albumId}/check`),
+        batchCheck: (albumIds) => apiRequest('/favorites/albums/batch-check', { method: 'POST', body: { album_ids: albumIds } }),
+        toggle: (albumId) => apiRequest(`/favorites/albums/${albumId}/toggle`, { method: 'POST' }),
+        count: (albumId) => apiRequest(`/public/albums/${albumId}/favorite-count`),
+    },
     progress: {
         get: (albumId) => apiRequest(`/progress/albums/${albumId}`),
         save: (albumId, currentPage, totalPages) => apiRequest(`/progress/albums/${albumId}`, { method: 'POST', body: { current_page: currentPage, total_pages: totalPages } }),

@@ -202,6 +202,17 @@ CREATE TABLE IF NOT EXISTS `album_read_progress` (
   KEY `idx_visitor_last_read` (`visitor_key`, `last_read_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='画册阅读进度表';
 
+-- 画册收藏表
+CREATE TABLE IF NOT EXISTS `album_favorites` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT UNSIGNED NOT NULL COMMENT '用户ID',
+  `album_id` INT UNSIGNED NOT NULL COMMENT '画册ID',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_user_album` (`user_id`, `album_id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_album_id` (`album_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='画册收藏表';
+
 -- 初始化背景图片库
 INSERT INTO `background_images` (`name`, `path`, `category`, `created_at`) VALUES
 ('商务蓝色科技', '/images/bg1.png', 'default', NOW()),

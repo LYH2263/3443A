@@ -57,6 +57,19 @@ Route::group('api/bookmarks', function () {
     Route::post('albums/:albumId/toggle', 'BookmarkController@toggle');
 })->prefix('app\\controller\\')->middleware([\app\middleware\CorsMiddleware::class, \app\middleware\AuthMiddleware::class]);
 
+// Favorite routes (require login)
+Route::group('api/favorites', function () {
+    Route::get('albums', 'AlbumFavoriteController@myList');
+    Route::get('albums/:albumId/check', 'AlbumFavoriteController@check');
+    Route::post('albums/batch-check', 'AlbumFavoriteController@batchCheck');
+    Route::post('albums/:albumId/toggle', 'AlbumFavoriteController@toggle');
+})->prefix('app\\controller\\')->middleware([\app\middleware\CorsMiddleware::class, \app\middleware\AuthMiddleware::class]);
+
+// Public favorite count
+Route::group('api/public', function () {
+    Route::get('albums/:albumId/favorite-count', 'AlbumFavoriteController@countByAlbum');
+})->prefix('app\\controller\\')->middleware(\app\middleware\CorsMiddleware::class);
+
 // Upload routes (require login)
 Route::group('api/upload', function () {
     Route::post('image', 'UploadController@image');

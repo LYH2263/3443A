@@ -1,7 +1,8 @@
 let viewerState = {
     album: null, pages: [], currentPage: 1, needPassword: false, flipbookReady: false,
     watermark: null, viewerInfo: null, sidebarOpen: true, bookmarks: new Set(),
-    focusedThumbIndex: -1, albumId: null, savedProgress: null, isDoublePageMode: false
+    focusedThumbIndex: -1, albumId: null, savedProgress: null, isDoublePageMode: false,
+    isFavorited: false
 };
 
 const saveProgressDebounced = debounce(async (albumId, page, total) => {
@@ -149,6 +150,7 @@ function renderViewerPage(id) {
                 <button class="viewer-back" onclick="window.location.hash='#/'">&#8592; 返回画册列表</button>
                 <h2 id="viewer-title">加载中...</h2>
                 <div class="viewer-header-actions">
+                    <button class="viewer-header-btn" id="btn-toggle-favorite" onclick="toggleAlbumFavorite()" title="收藏">&#9734;</button>
                     <button class="viewer-header-btn" id="btn-toggle-sidebar" onclick="toggleSidebar()" title="缩略图导航">&#9776;</button>
                     <button class="viewer-header-btn" id="btn-toggle-bookmark" onclick="toggleCurrentPageBookmark()" title="书签">&#9734;</button>
                 </div>
@@ -290,6 +292,16 @@ async function setupViewer(data) {
 
     document.getElementById('viewer-title').textContent = data.album.title || '画册';
     document.getElementById('viewer-loading').style.display = 'none';
+
+    viewerState.isFavorited = false;
+    if (isLoggedIn()) {
+        try {
+            const favRes = await api.favorites.check(viewerState.albumId);
+            viewerState.isFavorited = favRes.data && favRes.data.favorited;
+            favoriteStateMap[viewerState.albumId] = viewerState.isFavorited;
+        } catch (e) {}
+    }
+    updateFavoriteButtonViewer();
 
     if (data.album.background_image_url) {
         document.getElementById('viewer-bg').style.backgroundImage = `url(${getImageUrl(data.album.background_image_url)})`;
@@ -549,6 +561,51 @@ function updateBookmarkButton() {
     } else {
         btn.innerHTML = '&#9734;';
         btn.classList.remove('bookmarked');
+    }
+}
+
+function updateFavoriteButtonViewer() {
+    const btn = document.getElementById('btn-toggle-favorite');
+    if (!btn) return;
+    const loading = favoriteLoadingSet.has(viewerState.albumId);
+    const favorited = viewerState.isFavorited;
+    if (loading) {
+        btn.innerHTML = '<span class="spinner spinner-sm" style="border-color:rgba(255,255,255,0.2);border-top-color:var(--white)"></span>';
+        btn.classList.add('loading');
+    } else {
+        btn.innerHTML = favorited ? '&#11088;' : '&#9734;';
+        btn.classList.remove('loading');
+    }
+    btn.classList.toggle('bookmarked', favorited);
+    btn.title = favorited ? '取消收藏' : '收藏';
+}
+
+async function toggleAlbumFavorite() {
+    if (!isLoggedIn()) {
+        showToast('请先登录后再收藏', 'warning');
+        setTimeout(() => { window.location.hash = '#/login'; }, 800);
+        return;
+    }
+    if (favoriteLoadingSet.has(viewerState.albumId)) return;
+
+    const prevState = viewerState.isFavorited;
+    favoriteLoadingSet.add(viewerState.albumId);
+    updateFavoriteButtonViewer();
+
+    try {
+        const res = await api.favorites.toggle(viewerState.albumId);
+        viewerState.isFavorited = res.data.favorited;
+        favoriteStateMap[viewerState.albumId] = res.data.favorited;
+        showToast(res.data.favorited ? '收藏成功' : '已取消收藏', 'success');
+        if (window.onFavoriteChanged) {
+            window.onFavoriteChanged(viewerState.albumId, res.data.favorited);
+        }
+    } catch (e) {
+        viewerState.isFavorited = prevState;
+        favoriteStateMap[viewerState.albumId] = prevState;
+    } finally {
+        favoriteLoadingSet.delete(viewerState.albumId);
+        updateFavoriteButtonViewer();
     }
 }
 

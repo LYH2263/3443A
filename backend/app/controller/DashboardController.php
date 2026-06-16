@@ -4,6 +4,7 @@ namespace app\controller;
 
 use app\model\Album;
 use app\model\AlbumPage;
+use app\model\AlbumFavorite;
 use app\model\User;
 use app\model\AlbumCategory;
 use app\model\AccessLog;
@@ -30,6 +31,7 @@ class DashboardController
             ->each(function ($item) {
                 $item->cover_image_url = $item->cover_image ? get_upload_url($item->cover_image) : '';
                 $item->page_count = AlbumPage::where('album_id', $item->id)->count();
+                $item->favorite_count = AlbumFavorite::where('album_id', $item->id)->count();
                 return $item;
             });
 
@@ -59,6 +61,19 @@ class DashboardController
 
         $totalTodayQuotaReads = array_sum(array_column($quotaUsage, 'today_reads'));
 
+        $topFavoriteAlbums = AlbumFavorite::alias('f')
+            ->join('albums a', 'f.album_id = a.id')
+            ->field('a.id, a.title, a.cover_image, COUNT(f.id) as favorite_count')
+            ->group('f.album_id')
+            ->order('favorite_count', 'desc')
+            ->limit(5)
+            ->select()
+            ->each(function ($item) {
+                $item->cover_image_url = $item->cover_image ? get_upload_url($item->cover_image) : '';
+                $item->favorite_count = (int)$item->favorite_count;
+                return $item;
+            });
+
         return json_success([
             'album_count'           => $albumCount,
             'published_count'       => $publishedCount,
@@ -71,6 +86,7 @@ class DashboardController
             'quota_usage'           => $quotaUsage,
             'recent_albums'         => $recentAlbums,
             'recent_users'          => $recentUsers,
+            'top_favorite_albums'   => $topFavoriteAlbums,
         ]);
     }
 }

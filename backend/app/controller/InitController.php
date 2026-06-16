@@ -52,6 +52,26 @@ class InitController
         } catch (\Exception $e) {
             Log::error('迁移 user_daily_quotas 失败: ' . $e->getMessage());
         }
+
+        try {
+            $tableExists = Db::query("SHOW TABLES LIKE 'album_favorites'");
+            if (empty($tableExists)) {
+                Db::execute("
+                    CREATE TABLE IF NOT EXISTS `album_favorites` (
+                        `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        `user_id` INT UNSIGNED NOT NULL COMMENT '用户ID',
+                        `album_id` INT UNSIGNED NOT NULL COMMENT '画册ID',
+                        `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE KEY `uk_user_album` (`user_id`, `album_id`),
+                        KEY `idx_user_id` (`user_id`),
+                        KEY `idx_album_id` (`album_id`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='画册收藏表'
+                ");
+                Log::info('迁移: album_favorites 表已创建');
+            }
+        } catch (\Exception $e) {
+            Log::error('迁移 album_favorites 失败: ' . $e->getMessage());
+        }
     }
 
     private function initLevelQuotas()

@@ -5,6 +5,7 @@ namespace app\controller;
 use app\model\Album;
 use app\model\AlbumPage;
 use app\model\AlbumCategory;
+use app\model\AlbumFavorite;
 use app\model\AccessLog;
 use app\model\MemberLevel;
 use app\model\DailyQuota;
@@ -46,6 +47,7 @@ class AlbumController
                 $item->background_image_url = $item->background_image ? get_upload_url($item->background_image) : '';
                 $item->qrcode_image_url = $item->qrcode_image ? get_upload_url($item->qrcode_image) : '';
                 $item->page_count = AlbumPage::where('album_id', $item->id)->count();
+                $item->favorite_count = AlbumFavorite::where('album_id', $item->id)->count();
                 return $item;
             });
 
@@ -101,6 +103,7 @@ class AlbumController
                 $item->background_image_url = $item->background_image ? get_upload_url($item->background_image) : '';
                 $item->has_password = !empty($item->share_password);
                 $item->page_count = AlbumPage::where('album_id', $item->id)->count();
+                $item->favorite_count = AlbumFavorite::where('album_id', $item->id)->count();
                 unset($item->share_password);
                 return $item;
             });
@@ -124,6 +127,7 @@ class AlbumController
         $album->background_image_url = $album->background_image ? get_upload_url($album->background_image) : '';
         $album->qrcode_image_url = $album->qrcode_image ? get_upload_url($album->qrcode_image) : '';
         $album->qrcode_logo_url = $album->qrcode_logo ? get_upload_url($album->qrcode_logo) : '';
+        $album->favorite_count = AlbumFavorite::where('album_id', $id)->count();
 
         $pages = $album->pages->each(function ($page) {
             $page->image_url = $page->image ? get_upload_url($page->image) : '';
@@ -278,6 +282,7 @@ class AlbumController
                 'qrcode_text_line2'    => $album->qrcode_text_line2,
                 'category'             => $album->category,
                 'view_count'           => $album->view_count,
+                'favorite_count'       => AlbumFavorite::where('album_id', $album->id)->count(),
                 'watermark' => [
                     'enabled' => (bool)$album->watermark_enabled,
                     'text'    => $album->watermark_text,
@@ -448,6 +453,7 @@ class AlbumController
         }
 
         AccessLog::where('album_id', $id)->delete();
+        AlbumFavorite::where('album_id', $id)->delete();
 
         $title = $album->title;
         $album->delete();

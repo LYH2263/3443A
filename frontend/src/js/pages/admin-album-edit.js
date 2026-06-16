@@ -112,6 +112,22 @@ function renderAlbumEditForm(id) {
                                     </select>
                                 </div>
                             </div>
+                            ${id ? `
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px">
+                                <div class="form-group" style="margin-bottom:0">
+                                    <label class="form-label">浏览量</label>
+                                    <div style="padding:10px 14px;background:var(--gray-50);border-radius:var(--radius);color:var(--gray-700);font-weight:500">
+                                        &#128065; ${a.view_count || 0} 次浏览
+                                    </div>
+                                </div>
+                                <div class="form-group" style="margin-bottom:0">
+                                    <label class="form-label">收藏数</label>
+                                    <div style="padding:10px 14px;background:var(--gray-50);border-radius:var(--radius);color:#D97706;font-weight:500">
+                                        &#11088; ${a.favorite_count || 0} 人收藏
+                                    </div>
+                                </div>
+                            </div>
+                            ` : ''}
                         </form>
                     </div>
                 </div>

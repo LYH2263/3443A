@@ -130,19 +130,20 @@ async function initAdminDashboard() {
                     <div class="card-body" style="padding:0">
                         <table class="data-table">
                             <thead>
-                                <tr><th>标题</th><th>页数</th><th>状态</th></tr>
+                                <tr><th>标题</th><th>页数</th><th>收藏</th><th>状态</th></tr>
                             </thead>
                             <tbody>
                                 ${(d.recent_albums || []).map(a => `
                                     <tr>
                                         <td style="font-weight:500">${escapeHtml(a.title)}</td>
                                         <td>${a.page_count || 0}</td>
+                                        <td><span style="color:#D97706">&#11088; ${a.favorite_count || 0}</span></td>
                                         <td>${a.status === 1
                                             ? '<span class="badge badge-success">已发布</span>'
                                             : '<span class="badge badge-gray">草稿</span>'}</td>
                                     </tr>
                                 `).join('')}
-                                ${(d.recent_albums || []).length === 0 ? '<tr><td colspan="3" style="text-align:center;color:var(--gray-400)">暂无数据</td></tr>' : ''}
+                                ${(d.recent_albums || []).length === 0 ? '<tr><td colspan="4" style="text-align:center;color:var(--gray-400)">暂无数据</td></tr>' : ''}
                             </tbody>
                         </table>
                     </div>
@@ -171,6 +172,36 @@ async function initAdminDashboard() {
                             </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top:24px">
+                <div class="card-header">
+                    <h2>&#11088; 最受欢迎画册 Top5（按收藏数）</h2>
+                    <a href="#/admin/albums" class="btn btn-sm btn-secondary">查看全部</a>
+                </div>
+                <div class="card-body" style="padding:0">
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>排名</th><th>封面</th><th>标题</th><th>收藏数</th></tr>
+                        </thead>
+                        <tbody>
+                            ${(d.top_favorite_albums || []).map((a, i) => {
+                                const rankColors = ['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
+                                const color = rankColors[i] || 'var(--gray-500)';
+                                const coverUrl = a.cover_image_url ? getImageUrl(a.cover_image_url) : getPlaceholderImage();
+                                return `
+                                    <tr>
+                                        <td style="font-weight:700;font-size:18px;color:${color};width:60px">#${i + 1}</td>
+                                        <td><img src="${coverUrl}" alt="" style="width:50px;height:36px;object-fit:cover;border-radius:4px" onerror="this.src='${getPlaceholderImage()}'"></td>
+                                        <td style="font-weight:500">${escapeHtml(a.title)}</td>
+                                        <td><strong style="color:#D97706;font-size:16px">&#11088; ${a.favorite_count || 0}</strong></td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                            ${(d.top_favorite_albums || []).length === 0 ? '<tr><td colspan="4" style="text-align:center;color:var(--gray-400)">暂无收藏数据</td></tr>' : ''}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         `;

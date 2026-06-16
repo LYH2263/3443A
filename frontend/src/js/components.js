@@ -14,6 +14,7 @@ function renderNavbar(activePage = '') {
                 <div class="home-nav-dropdown" id="user-dropdown">
                     ${user.role === 'admin' ? `<a href="#/admin">&#9881; 管理后台</a>` : ''}
                     <a href="#/profile">&#128100; 个人中心</a>
+                    <a href="#/favorites">&#11088; 我的收藏</a>
                     <div class="dropdown-divider"></div>
                     <button onclick="logout()">&#128682; 退出登录</button>
                 </div>
@@ -146,4 +147,90 @@ async function uploadFiles(files, id) {
             <p>支持 JPG、PNG、GIF、WebP 格式，最大 10MB</p>
         `;
     }
+}
+
+const favoriteLoadingSet = new Set();
+const favoriteStateMap = {};
+
+function renderFavoriteButton(albumId, options = {}) {
+    const { size = 'md', showText = false, className = '' } = options;
+    const loading = favoriteLoadingSet.has(albumId);
+    const favorited = favoriteStateMap[albumId] || false;
+
+    const sizeClass = size === 'sm' ? 'fav-btn-sm' : size === 'lg' ? 'fav-btn-lg' : '';
+    const icon = favorited ? '&#11088;' : '&#9734;';
+    const text = favorited ? '已收藏' : '收藏';
+
+    return `
+        <button class="favorite-btn ${sizeClass} ${favorited ? 'favorited' : ''} ${loading ? 'loading' : ''} ${className}"
+                data-album-id="${albumId}"
+                onclick="handleFavoriteToggle(event, ${albumId})"
+                title="${favorited ? '取消收藏' : '收藏'}">
+            <span class="fav-icon">${loading ? '<span class="spinner spinner-sm"></span>' : icon}</span>
+            ${showText ? `<span class="fav-text">${text}</span>` : ''}
+        </button>
+    `;
+}
+
+async function handleFavoriteToggle(event, albumId) {
+    if (event) event.stopPropagation();
+
+    if (!isLoggedIn()) {
+        showToast('请先登录后再收藏', 'warning');
+        setTimeout(() => { window.location.hash = '#/login'; }, 800);
+        return;
+    }
+
+    if (favoriteLoadingSet.has(albumId)) return;
+
+    const prevState = favoriteStateMap[albumId] || false;
+    favoriteLoadingSet.add(albumId);
+    updateFavoriteButtonUI(albumId);
+
+    try {
+        const res = await api.favorites.toggle(albumId);
+        favoriteStateMap[albumId] = res.data.favorited;
+        showToast(res.data.favorited ? '收藏成功' : '已取消收藏', 'success');
+
+        if (window.onFavoriteChanged) {
+            window.onFavoriteChanged(albumId, res.data.favorited);
+        }
+    } catch (e) {
+        favoriteStateMap[albumId] = prevState;
+    } finally {
+        favoriteLoadingSet.delete(albumId);
+        updateFavoriteButtonUI(albumId);
+    }
+}
+
+function updateFavoriteButtonUI(albumId) {
+    document.querySelectorAll(`.favorite-btn[data-album-id="${albumId}"]`).forEach(btn => {
+        const loading = favoriteLoadingSet.has(albumId);
+        const favorited = favoriteStateMap[albumId] || false;
+
+        btn.classList.toggle('loading', loading);
+        btn.classList.toggle('favorited', favorited);
+
+        const iconEl = btn.querySelector('.fav-icon');
+        if (iconEl) {
+            iconEl.innerHTML = loading ? '<span class="spinner spinner-sm"></span>' : (favorited ? '&#11088;' : '&#9734;');
+        }
+
+        const textEl = btn.querySelector('.fav-text');
+        if (textEl) {
+            textEl.textContent = favorited ? '已收藏' : '收藏';
+        }
+
+        btn.title = favorited ? '取消收藏' : '收藏';
+    });
+}
+
+async function loadFavoriteStates(albumIds) {
+    if (!isLoggedIn() || !albumIds || albumIds.length === 0) return;
+    try {
+        const res = await api.favorites.batchCheck(albumIds);
+        if (res.data && res.data.favorites) {
+            Object.assign(favoriteStateMap, res.data.favorites);
+        }
+    } catch (e) {}
 }
