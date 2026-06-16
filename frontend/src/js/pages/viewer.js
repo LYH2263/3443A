@@ -2,7 +2,19 @@ let viewerState = {
     album: null, pages: [], currentPage: 1, needPassword: false, flipbookReady: false,
     watermark: null, viewerInfo: null, sidebarOpen: true, bookmarks: new Set(),
     focusedThumbIndex: -1, albumId: null, savedProgress: null, isDoublePageMode: false,
-    isFavorited: false
+    isFavorited: false,
+    magnifierEnabled: false,
+    magnifierActive: false,
+    magnifierZoom: 2.5,
+    magnifierSize: 180,
+    isMobileZoomActive: false,
+    mobileZoomScale: 1,
+    mobilePanOffset: { x: 0, y: 0 },
+    mobilePinchStartDistance: 0,
+    mobilePinchStartScale: 1,
+    mobileTouchStartPos: { x: 0, y: 0 },
+    magnifierImageLoaded: false,
+    magnifierRafId: null
 };
 
 const saveProgressDebounced = debounce(async (albumId, page, total) => {
@@ -153,6 +165,7 @@ function renderViewerPage(id) {
                     <button class="viewer-header-btn" id="btn-toggle-favorite" onclick="toggleAlbumFavorite()" title="收藏">&#9734;</button>
                     <button class="viewer-header-btn" id="btn-toggle-sidebar" onclick="toggleSidebar()" title="缩略图导航">&#9776;</button>
                     <button class="viewer-header-btn" id="btn-toggle-bookmark" onclick="toggleCurrentPageBookmark()" title="书签">&#9734;</button>
+                    <button class="viewer-header-btn" id="btn-toggle-magnifier" onclick="toggleMagnifier()" title="放大镜">&#128269;</button>
                 </div>
             </div>
             <div class="viewer-body">
@@ -171,6 +184,19 @@ function renderViewerPage(id) {
                         <div id="flipbook-wrapper">
                             <div id="viewer-loading">${renderLoading()}</div>
                             <div id="flipbook" style="display:none"></div>
+                        </div>
+                        <div class="magnifier-lens" id="magnifier-lens" style="display:none">
+                            <div class="magnifier-lens-inner" id="magnifier-lens-inner"></div>
+                        </div>
+                        <div class="magnifier-controls" id="magnifier-controls" style="display:none">
+                            <div class="magnifier-zoom-control">
+                                <span class="magnifier-zoom-label">放大倍率</span>
+                                <input type="range" id="magnifier-zoom-slider" min="2" max="3" step="0.1" value="2.5" oninput="updateMagnifierZoom(this.value)">
+                                <span class="magnifier-zoom-value" id="magnifier-zoom-value">2.5x</span>
+                            </div>
+                        </div>
+                        <div class="mobile-zoom-hint" id="mobile-zoom-hint" style="display:none">
+                            双指捏合缩放，单指拖动平移
                         </div>
                         <div class="viewer-password" id="viewer-password" style="display:none">
                             <div class="viewer-password-box">
@@ -232,7 +258,19 @@ async function initViewerPage(id) {
     viewerState = {
         album: null, pages: [], currentPage: 1, needPassword: false, flipbookReady: false,
         watermark: null, viewerInfo: null, sidebarOpen: window.innerWidth > 768,
-        bookmarks: new Set(), focusedThumbIndex: -1, albumId: id
+        bookmarks: new Set(), focusedThumbIndex: -1, albumId: id,
+        magnifierEnabled: false,
+        magnifierActive: false,
+        magnifierZoom: 2.5,
+        magnifierSize: 180,
+        isMobileZoomActive: false,
+        mobileZoomScale: 1,
+        mobilePanOffset: { x: 0, y: 0 },
+        mobilePinchStartDistance: 0,
+        mobilePinchStartScale: 1,
+        mobileTouchStartPos: { x: 0, y: 0 },
+        magnifierImageLoaded: false,
+        magnifierRafId: null
     };
     try {
         const res = await api.public.albumDetail(id, undefined, { suppressToast: true });
@@ -766,6 +804,11 @@ function initFlipbook() {
                 viewerState.currentPage = page;
                 updatePageIndicator();
                 highlightCurrentThumb();
+
+                if (viewerState.magnifierEnabled) {
+                    hideMagnifier();
+                    resetMobileZoom();
+                }
             },
             turned: function (event, page, view) {
                 viewerState.currentPage = page;
@@ -777,6 +820,11 @@ function initFlipbook() {
                 highlightCurrentThumb();
                 updateBookmarkButton();
                 setTimeout(() => checkAndDrawWatermarks(), 50);
+
+                if (viewerState.magnifierEnabled) {
+                    resetMagnifier();
+                    viewerState.magnifierImageLoaded = false;
+                }
             }
         }
     });
@@ -854,11 +902,30 @@ function handleViewerResize() {
     }
     $('#flipbook').turn('size', width, height);
     setTimeout(() => redrawAllWatermarks(), 50);
+
+    if (viewerState.magnifierEnabled) {
+        hideMagnifier();
+        resetMobileZoom();
+        resetMagnifier();
+    }
 }
 
 window.addEventListener('resize', debounce(() => {
     updateSidebarState();
     handleViewerResize();
+
+    if (viewerState.magnifierEnabled) {
+        const isMobile = window.innerWidth <= 768;
+        const magnifierControls = document.getElementById('magnifier-controls');
+        const mobileZoomHint = document.getElementById('mobile-zoom-hint');
+
+        if (magnifierControls) {
+            magnifierControls.style.display = isMobile ? 'none' : 'flex';
+        }
+        if (mobileZoomHint) {
+            mobileZoomHint.style.display = isMobile ? 'block' : 'none';
+        }
+    }
 }, 300));
 
 document.addEventListener('fullscreenchange', () => {
@@ -892,5 +959,392 @@ document.addEventListener('keydown', (e) => {
         flipPrev();
     } else if (e.key === 'ArrowRight') {
         flipNext();
+    }
+});
+
+function toggleMagnifier() {
+    viewerState.magnifierEnabled = !viewerState.magnifierEnabled;
+    const btn = document.getElementById('btn-toggle-magnifier');
+    const magnifierControls = document.getElementById('magnifier-controls');
+    const mobileZoomHint = document.getElementById('mobile-zoom-hint');
+    const isMobile = window.innerWidth <= 768;
+
+    if (btn) {
+        btn.classList.toggle('active', viewerState.magnifierEnabled);
+        btn.title = viewerState.magnifierEnabled ? '关闭放大镜' : '放大镜';
+    }
+
+    if (viewerState.magnifierEnabled) {
+        showToast('放大镜已开启，鼠标悬停查看细节', 'info', 2000);
+        if (isMobile) {
+            if (mobileZoomHint) mobileZoomHint.style.display = 'block';
+        } else {
+            if (magnifierControls) magnifierControls.style.display = 'flex';
+        }
+        initMagnifierEvents();
+        setFlipbookDraggable(false);
+    } else {
+        if (isMobile) {
+            if (mobileZoomHint) mobileZoomHint.style.display = 'none';
+            resetMobileZoom();
+        } else {
+            if (magnifierControls) magnifierControls.style.display = 'none';
+            hideMagnifier();
+        }
+        removeMagnifierEvents();
+        setFlipbookDraggable(true);
+        resetMagnifier();
+    }
+}
+
+function updateMagnifierZoom(value) {
+    viewerState.magnifierZoom = parseFloat(value);
+    const zoomValue = document.getElementById('magnifier-zoom-value');
+    if (zoomValue) {
+        zoomValue.textContent = viewerState.magnifierZoom.toFixed(1) + 'x';
+    }
+}
+
+function setFlipbookDraggable(draggable) {
+    if (!viewerState.flipbookReady) return;
+    try {
+        $('#flipbook').turn('options', { draggable: draggable });
+    } catch (e) {}
+}
+
+function initMagnifierEvents() {
+    const flipbookWrapper = document.getElementById('flipbook-wrapper');
+    if (!flipbookWrapper) return;
+
+    flipbookWrapper.addEventListener('mousemove', handleMagnifierMouseMove);
+    flipbookWrapper.addEventListener('mouseenter', handleMagnifierMouseEnter);
+    flipbookWrapper.addEventListener('mouseleave', handleMagnifierMouseLeave);
+
+    initMobileZoomEvents();
+}
+
+function removeMagnifierEvents() {
+    const flipbookWrapper = document.getElementById('flipbook-wrapper');
+    if (!flipbookWrapper) return;
+
+    flipbookWrapper.removeEventListener('mousemove', handleMagnifierMouseMove);
+    flipbookWrapper.removeEventListener('mouseenter', handleMagnifierMouseEnter);
+    flipbookWrapper.removeEventListener('mouseleave', handleMagnifierMouseLeave);
+
+    removeMobileZoomEvents();
+}
+
+function handleMagnifierMouseEnter(e) {
+    if (!viewerState.magnifierEnabled) return;
+    const img = getCurrentPageImage(e);
+    if (!img || !img.complete || img.naturalWidth === 0) {
+        viewerState.magnifierImageLoaded = false;
+        return;
+    }
+    viewerState.magnifierImageLoaded = true;
+    showMagnifier();
+    updateMagnifier(e, img);
+}
+
+function handleMagnifierMouseMove(e) {
+    if (!viewerState.magnifierEnabled || !viewerState.magnifierImageLoaded) return;
+    const img = getCurrentPageImage(e);
+    if (!img) return;
+
+    if (viewerState.magnifierRafId) {
+        cancelAnimationFrame(viewerState.magnifierRafId);
+    }
+
+    viewerState.magnifierRafId = requestAnimationFrame(() => {
+        updateMagnifier(e, img);
+        viewerState.magnifierRafId = null;
+    });
+}
+
+function handleMagnifierMouseLeave() {
+    hideMagnifier();
+}
+
+function getCurrentPageImage(e) {
+    const flipbook = document.getElementById('flipbook');
+    if (!flipbook) return null;
+
+    if (e) {
+        let clientX = e.clientX;
+        let clientY = e.clientY;
+        let target = e.target;
+
+        if (e.target === undefined && e.identifier !== undefined) {
+            clientX = e.clientX;
+            clientY = e.clientY;
+            target = document.elementFromPoint(clientX, clientY);
+        }
+
+        if (target && target.nodeType === 1) {
+            const pageEl = target.closest('.page');
+            if (pageEl) {
+                const img = pageEl.querySelector('img');
+                if (img) return img;
+            }
+        }
+
+        if (clientX !== undefined && clientY !== undefined) {
+            const el = document.elementFromPoint(clientX, clientY);
+            if (el) {
+                const pageEl = el.closest('.page');
+                if (pageEl) {
+                    const img = pageEl.querySelector('img');
+                    if (img) return img;
+                }
+            }
+        }
+    }
+
+    const currentPage = viewerState.currentPage;
+    const pages = flipbook.querySelectorAll('.page');
+    for (let i = 0; i < pages.length; i++) {
+        const pageNum = i + 1;
+        if (pageNum === currentPage || (viewerState.isDoublePageMode && 
+            (pageNum === currentPage || pageNum === currentPage + 1))) {
+            const img = pages[i].querySelector('img');
+            if (img && img.complete && img.naturalWidth > 0) {
+                return img;
+            }
+        }
+    }
+
+    return null;
+}
+
+function getMousePositionInImage(e, img) {
+    const imgRect = img.getBoundingClientRect();
+    let x = e.clientX - imgRect.left;
+    let y = e.clientY - imgRect.top;
+
+    x = Math.max(0, Math.min(imgRect.width, x));
+    y = Math.max(0, Math.min(imgRect.height, y));
+
+    const percentX = x / imgRect.width;
+    const percentY = y / imgRect.height;
+
+    return {
+        x: x,
+        y: y,
+        percentX: percentX,
+        percentY: percentY,
+        imgRect: imgRect
+    };
+}
+
+function updateMagnifier(e, img) {
+    const lens = document.getElementById('magnifier-lens');
+    const lensInner = document.getElementById('magnifier-lens-inner');
+    if (!lens || !lensInner || !img) return;
+
+    const pos = getMousePositionInImage(e, img);
+    const containerRect = document.getElementById('viewer-container').getBoundingClientRect();
+
+    const lensSize = viewerState.magnifierSize;
+    const zoom = viewerState.magnifierZoom;
+
+    let lensX = e.clientX - containerRect.left - lensSize / 2;
+    let lensY = e.clientY - containerRect.top - lensSize / 2;
+
+    const lensHalf = lensSize / 2;
+    const minX = pos.imgRect.left - containerRect.left;
+    const maxX = pos.imgRect.right - containerRect.left;
+    const minY = pos.imgRect.top - containerRect.top;
+    const maxY = pos.imgRect.bottom - containerRect.top;
+
+    lensX = Math.max(minX, Math.min(maxX - lensSize, lensX));
+    lensY = Math.max(minY, Math.min(maxY - lensSize, lensY));
+
+    const clampX = Math.max(lensHalf / zoom, Math.min(img.naturalWidth - lensHalf / zoom, pos.percentX * img.naturalWidth));
+    const clampY = Math.max(lensHalf / zoom, Math.min(img.naturalHeight - lensHalf / zoom, pos.percentY * img.naturalHeight));
+
+    const bgPosX = -(clampX * zoom - lensHalf);
+    const bgPosY = -(clampY * zoom - lensHalf);
+
+    const imgSrc = getImageUrl(img.getAttribute('src') || img.src);
+
+    lensInner.style.backgroundImage = `url(${imgSrc})`;
+    lensInner.style.backgroundSize = `${img.naturalWidth * zoom}px ${img.naturalHeight * zoom}px`;
+    lensInner.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
+
+    lens.style.left = `${lensX}px`;
+    lens.style.top = `${lensY}px`;
+    lens.style.width = `${lensSize}px`;
+    lens.style.height = `${lensSize}px`;
+}
+
+function showMagnifier() {
+    const lens = document.getElementById('magnifier-lens');
+    if (lens) {
+        lens.style.display = 'block';
+        viewerState.magnifierActive = true;
+    }
+}
+
+function hideMagnifier() {
+    if (viewerState.magnifierRafId) {
+        cancelAnimationFrame(viewerState.magnifierRafId);
+        viewerState.magnifierRafId = null;
+    }
+    const lens = document.getElementById('magnifier-lens');
+    if (lens) {
+        lens.style.display = 'none';
+        viewerState.magnifierActive = false;
+    }
+}
+
+function resetMagnifier() {
+    if (viewerState.magnifierRafId) {
+        cancelAnimationFrame(viewerState.magnifierRafId);
+        viewerState.magnifierRafId = null;
+    }
+    viewerState.magnifierActive = false;
+    viewerState.magnifierImageLoaded = false;
+    const lens = document.getElementById('magnifier-lens');
+    const lensInner = document.getElementById('magnifier-lens-inner');
+    if (lens) lens.style.display = 'none';
+    if (lensInner) {
+        lensInner.style.backgroundImage = '';
+        lensInner.style.backgroundPosition = '';
+    }
+}
+
+function initMobileZoomEvents() {
+    const flipbookWrapper = document.getElementById('flipbook-wrapper');
+    if (!flipbookWrapper) return;
+
+    flipbookWrapper.addEventListener('touchstart', handleMobileTouchStart, { passive: false });
+    flipbookWrapper.addEventListener('touchmove', handleMobileTouchMove, { passive: false });
+    flipbookWrapper.addEventListener('touchend', handleMobileTouchEnd);
+}
+
+function removeMobileZoomEvents() {
+    const flipbookWrapper = document.getElementById('flipbook-wrapper');
+    if (!flipbookWrapper) return;
+
+    flipbookWrapper.removeEventListener('touchstart', handleMobileTouchStart);
+    flipbookWrapper.removeEventListener('touchmove', handleMobileTouchMove);
+    flipbookWrapper.removeEventListener('touchend', handleMobileTouchEnd);
+}
+
+function getTouchDistance(touches) {
+    if (touches.length < 2) return 0;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+function handleMobileTouchStart(e) {
+    if (!viewerState.magnifierEnabled) return;
+
+    const img = getCurrentPageImage(e.touches[0]);
+    if (!img || !img.complete || img.naturalWidth === 0) return;
+
+    if (e.touches.length === 2) {
+        e.preventDefault();
+        viewerState.isMobileZoomActive = true;
+        viewerState.mobilePinchStartDistance = getTouchDistance(e.touches);
+        viewerState.mobilePinchStartScale = viewerState.mobileZoomScale;
+        viewerState.mobileTouchStartPos = {
+            x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+            y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+        };
+        setFlipbookDraggable(false);
+    } else if (e.touches.length === 1 && viewerState.mobileZoomScale > 1) {
+        e.preventDefault();
+        viewerState.isMobileZoomActive = true;
+        viewerState.mobileTouchStartPos = {
+            x: e.touches[0].clientX - viewerState.mobilePanOffset.x,
+            y: e.touches[0].clientY - viewerState.mobilePanOffset.y
+        };
+        setFlipbookDraggable(false);
+    }
+}
+
+function handleMobileTouchMove(e) {
+    if (!viewerState.magnifierEnabled) return;
+
+    const img = getCurrentPageImage(e.touches[0]);
+    if (!img) return;
+
+    if (e.touches.length === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        viewerState.isMobileZoomActive = true;
+        const currentDistance = getTouchDistance(e.touches);
+        const scale = (currentDistance / viewerState.mobilePinchStartDistance) * viewerState.mobilePinchStartScale;
+        viewerState.mobileZoomScale = Math.max(1, Math.min(4, scale));
+        updateMobileZoom(img);
+    } else if (e.touches.length === 1 && viewerState.mobileZoomScale > 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        viewerState.isMobileZoomActive = true;
+        const imgRect = img.getBoundingClientRect();
+        const maxPanX = (viewerState.mobileZoomScale - 1) * imgRect.width / 2;
+        const maxPanY = (viewerState.mobileZoomScale - 1) * imgRect.height / 2;
+
+        let newX = e.touches[0].clientX - viewerState.mobileTouchStartPos.x;
+        let newY = e.touches[0].clientY - viewerState.mobileTouchStartPos.y;
+
+        newX = Math.max(-maxPanX, Math.min(maxPanX, newX));
+        newY = Math.max(-maxPanY, Math.min(maxPanY, newY));
+
+        viewerState.mobilePanOffset = { x: newX, y: newY };
+        updateMobileZoom(img);
+    }
+}
+
+function handleMobileTouchEnd(e) {
+    if (!viewerState.magnifierEnabled) return;
+
+    if (e.touches.length === 0) {
+        viewerState.isMobileZoomActive = false;
+        if (viewerState.mobileZoomScale <= 1) {
+            setFlipbookDraggable(true);
+        }
+    }
+}
+
+function updateMobileZoom(img) {
+    if (!img) return;
+    const scale = viewerState.mobileZoomScale;
+    const panX = viewerState.mobilePanOffset.x;
+    const panY = viewerState.mobilePanOffset.y;
+    img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    img.style.transformOrigin = 'center center';
+    img.style.transition = viewerState.isMobileZoomActive ? 'none' : 'transform 0.3s ease';
+}
+
+function resetMobileZoom() {
+    viewerState.mobileZoomScale = 1;
+    viewerState.mobilePanOffset = { x: 0, y: 0 };
+    viewerState.isMobileZoomActive = false;
+
+    const images = document.querySelectorAll('#flipbook .page img');
+    images.forEach(img => {
+        img.style.transform = '';
+        img.style.transformOrigin = '';
+        img.style.transition = '';
+    });
+
+    setFlipbookDraggable(true);
+}
+
+function updateMagnifierButtonState() {
+    const btn = document.getElementById('btn-toggle-magnifier');
+    if (btn) {
+        btn.classList.toggle('active', viewerState.magnifierEnabled);
+    }
+}
+
+window.addEventListener('hashchange', () => {
+    if (viewerState.magnifierEnabled) {
+        resetMagnifier();
+        resetMobileZoom();
+        setFlipbookDraggable(true);
     }
 });
