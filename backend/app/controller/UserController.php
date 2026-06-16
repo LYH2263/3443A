@@ -4,6 +4,7 @@ namespace app\controller;
 
 use app\model\User;
 use app\model\MemberLevel;
+use app\service\AuditWriter;
 use think\facade\Log;
 use think\facade\Validate;
 use think\Request;
@@ -99,6 +100,15 @@ class UserController
         $user->save();
 
         Log::info("管理员创建用户: {$user->username} (ID: {$user->id})");
+        AuditWriter::logCreate('user', $user->id, $user->username, [
+            'username'       => $user->username,
+            'nickname'       => $user->nickname,
+            'email'          => $user->email,
+            'phone'          => $user->phone,
+            'role'           => $user->role,
+            'member_level_id'=> $user->member_level_id,
+            'status'         => $user->status,
+        ]);
 
         return json_success($user, '用户创建成功');
     }
@@ -112,6 +122,14 @@ class UserController
 
         $data = getRequestData($request);
         $currentUserId = $request->uid;
+        $beforeData = [
+            'nickname'       => $user->nickname,
+            'email'          => $user->email,
+            'phone'          => $user->phone,
+            'role'           => $user->role,
+            'member_level_id'=> $user->member_level_id,
+            'status'         => $user->status,
+        ];
 
         if ((int)$id === 1) {
             if (isset($data['role']) && $data['role'] !== 'admin') {
@@ -180,12 +198,26 @@ class UserController
             if (strlen($data['password']) < 6) {
                 return json_error('密码长度不能少于6个字符');
             }
+            $beforeData['password'] = '***';
             $user->password = $data['password'];
         }
 
         $user->save();
 
+        $afterData = [
+            'nickname'       => $user->nickname,
+            'email'          => $user->email,
+            'phone'          => $user->phone,
+            'role'           => $user->role,
+            'member_level_id'=> $user->member_level_id,
+            'status'         => $user->status,
+        ];
+        if (isset($beforeData['password'])) {
+            $afterData['password'] = '***';
+        }
+
         Log::info("管理员更新用户: {$user->username} (ID: {$user->id}) by admin {$currentUserId}");
+        AuditWriter::logUpdate('user', $user->id, $user->username, $beforeData, $afterData);
 
         return json_success($user, '用户更新成功');
     }
@@ -214,9 +246,19 @@ class UserController
         }
 
         $username = $user->username;
+        $beforeData = [
+            'username'       => $user->username,
+            'nickname'       => $user->nickname,
+            'email'          => $user->email,
+            'phone'          => $user->phone,
+            'role'           => $user->role,
+            'member_level_id'=> $user->member_level_id,
+            'status'         => $user->status,
+        ];
         $user->delete();
 
         Log::info("管理员删除用户: {$username} (ID: {$id}) by admin {$request->uid}");
+        AuditWriter::logDelete('user', $id, $username, $beforeData);
 
         return json_success([], '用户删除成功');
     }

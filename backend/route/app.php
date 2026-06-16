@@ -134,4 +134,10 @@ Route::group('api/admin', function () {
     Route::post('backgrounds', 'BackgroundImageController@store');
     Route::get('backgrounds', 'BackgroundImageController@index');
     Route::delete('backgrounds/:id', 'BackgroundImageController@delete');
+
+    // Audit Logs
+    Route::get('audit-logs', 'AuditLogController@index');
+    Route::get('audit-logs/meta', 'AuditLogController@media');
+    Route::get('audit-logs/:id', 'AuditLogController@detail')->pattern(['id' => '\d+']);
+    Route::post('audit-logs/archive', 'AuditLogController@archive');
 })->prefix('app\\controller\\')->middleware([\app\middleware\CorsMiddleware::class, \app\middleware\AdminMiddleware::class]);

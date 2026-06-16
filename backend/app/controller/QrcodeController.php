@@ -10,6 +10,7 @@ use Endroid\QrCode\ErrorCorrectionLevel\ErrorCorrectionLevelHigh;
 use Endroid\QrCode\Color\Color;
 use Endroid\QrCode\RoundBlockSizeMode\RoundBlockSizeModeMargin;
 use Endroid\QrCode\Logo\Logo;
+use app\service\AuditWriter;
 use think\facade\Log;
 use think\Request;
 
@@ -87,6 +88,17 @@ class QrcodeController
             }
 
             Log::info("生成二维码: album_id={$albumId}, path={$relativePath}");
+            $targetName = '';
+            if ($albumId > 0 && isset($album)) {
+                $targetName = $album->title;
+            }
+            AuditWriter::logQrcode('album', $albumId, $targetName, [
+                'qrcode_image'    => $relativePath,
+                'qrcode_logo'     => $logoPath,
+                'qrcode_text_line1' => $textLine1,
+                'qrcode_text_line2' => $textLine2,
+                'content'         => substr($content, 0, 200),
+            ]);
 
             return json_success([
                 'path' => $relativePath,

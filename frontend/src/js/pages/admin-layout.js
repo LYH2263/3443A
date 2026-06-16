@@ -46,6 +46,12 @@ function renderAdminLayout(activePage, content) {
                         </a>
                     </div>
                     <div class="admin-nav-group">
+                        <div class="admin-nav-group-title">系统</div>
+                        <a href="#/admin/audit-logs" class="admin-nav-item ${activePage === 'audit' ? 'active' : ''}">
+                            &#128220; 审计日志
+                        </a>
+                    </div>
+                    <div class="admin-nav-group">
                         <div class="admin-nav-group-title">其他</div>
                         <a href="#/" class="admin-nav-item">
                             &#127968; 前台首页

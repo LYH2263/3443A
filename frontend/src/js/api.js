@@ -171,6 +171,11 @@ const api = {
         snapshotDiff: (albumId, snapshotId1, snapshotId2) => apiRequest(`/admin/albums/${albumId}/snapshots/diff?snapshot_id_1=${snapshotId1}&snapshot_id_2=${snapshotId2}`),
         rollbackSnapshot: (albumId, snapshotId) => apiRequest(`/admin/albums/${albumId}/snapshots/rollback`, { method: 'POST', body: { snapshot_id: snapshotId } }),
         createSnapshot: (albumId, remark) => apiRequest(`/admin/albums/${albumId}/snapshots`, { method: 'POST', body: { remark: remark || '' } }),
+
+        auditLogs: (params) => apiRequest('/admin/audit-logs?' + new URLSearchParams(params || {})),
+        auditLogDetail: (id) => apiRequest(`/admin/audit-logs/${id}`),
+        auditLogsMeta: () => apiRequest('/admin/audit-logs/meta'),
+        auditLogsArchive: (days) => apiRequest('/admin/audit-logs/archive', { method: 'POST', body: { days } }),
     },
     bookmarks: {
         list: (albumId) => apiRequest(`/bookmarks/albums/${albumId}`),

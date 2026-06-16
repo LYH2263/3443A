@@ -12,6 +12,7 @@ use app\model\MemberLevel;
 use app\model\DailyQuota;
 use app\model\User;
 use app\service\AlbumSnapshotService;
+use app\service\AuditWriter;
 use think\facade\Db;
 use think\facade\Log;
 use think\facade\Validate;
@@ -398,6 +399,16 @@ class AlbumController
         $album->save();
 
         Log::info("创建画册: {$album->title} (ID: {$album->id}) by user {$request->uid}");
+        AuditWriter::logCreate('album', $album->id, $album->title, [
+            'title'           => $album->title,
+            'description'     => $album->description,
+            'category_id'     => $album->category_id,
+            'min_level'       => $album->min_level,
+            'status'          => $album->status,
+            'sort_order'      => $album->sort_order,
+            'watermark_enabled' => $album->watermark_enabled,
+            'creator_id'      => $album->creator_id,
+        ]);
 
         return json_success($album, '画册创建成功');
     }
@@ -410,9 +421,10 @@ class AlbumController
         }
 
         $data = getRequestData($request);
+        $beforeData = $album->toArray();
 
         if (!empty($data['expected_version'])) {
-            if (!AlbumSnapshotService::checkVersionConflict($id, (int)$data['expected_version']) {
+            if (!AlbumSnapshotService::checkVersionConflict($id, (int)$data['expected_version'])) {
                 return json_error('画册已被其他人修改，请刷新后重试', 409, [
                     'conflict' => true,
                     'current_version' => AlbumSnapshot::where('album_id', $id)->max('version') ?: 0,
@@ -448,7 +460,10 @@ class AlbumController
 
         $album->save();
 
+        $afterData = $album->toArray();
+
         Log::info("更新画册: {$album->title} (ID: {$album->id}) by user {$request->uid}");
+        AuditWriter::logUpdate('album', $album->id, $album->title, $beforeData, $afterData);
 
         $album->current_version = isset($snapshot) ? $snapshot->version : (AlbumSnapshot::where('album_id', $id)->max('version') ?: 0);
 
@@ -471,9 +486,11 @@ class AlbumController
         AlbumFavorite::where('album_id', $id)->delete();
 
         $title = $album->title;
+        $beforeData = $album->toArray();
         $album->delete();
 
         Log::info("删除画册: {$title} (ID: {$id}) by user {$request->uid}");
+        AuditWriter::logDelete('album', $id, $title, $beforeData);
 
         return json_success([], '画册删除成功');
     }

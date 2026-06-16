@@ -4,6 +4,7 @@ namespace app\controller;
 
 use app\model\AlbumCategory;
 use app\model\Album;
+use app\service\AuditWriter;
 use think\facade\Log;
 use think\facade\Validate;
 use think\Request;
@@ -49,6 +50,11 @@ class CategoryController
         $category->save();
 
         Log::info("创建画册分类: {$category->name} (ID: {$category->id})");
+        AuditWriter::logCreate('category', $category->id, $category->name, [
+            'name'       => $category->name,
+            'sort_order' => $category->sort_order,
+            'status'     => $category->status,
+        ]);
 
         return json_success($category, '分类创建成功');
     }
@@ -61,6 +67,11 @@ class CategoryController
         }
 
         $data = getRequestData($request);
+        $beforeData = [
+            'name'       => $category->name,
+            'sort_order' => $category->sort_order,
+            'status'     => $category->status,
+        ];
 
         if (isset($data['name'])) {
             if (empty($data['name']) || mb_strlen($data['name']) > 100) {
@@ -82,7 +93,14 @@ class CategoryController
 
         $category->save();
 
+        $afterData = [
+            'name'       => $category->name,
+            'sort_order' => $category->sort_order,
+            'status'     => $category->status,
+        ];
+
         Log::info("更新画册分类: {$category->name} (ID: {$id})");
+        AuditWriter::logUpdate('category', $category->id, $category->name, $beforeData, $afterData);
 
         return json_success($category, '分类更新成功');
     }
@@ -100,9 +118,15 @@ class CategoryController
         }
 
         $name = $category->name;
+        $beforeData = [
+            'name'       => $category->name,
+            'sort_order' => $category->sort_order,
+            'status'     => $category->status,
+        ];
         $category->delete();
 
         Log::info("删除画册分类: {$name} (ID: {$id})");
+        AuditWriter::logDelete('category', $id, $name, $beforeData);
 
         return json_success([], '分类删除成功');
     }

@@ -5,6 +5,7 @@ namespace app\controller;
 use app\model\User;
 use app\model\MemberLevel;
 use app\model\DailyQuota;
+use app\service\AuditWriter;
 use think\facade\Log;
 use think\facade\Validate;
 use think\Request;
@@ -49,6 +50,10 @@ class AuthController
         $isVip = $level && $level->level >= 3;
 
         Log::info("用户登录成功: {$user->username} (ID: {$user->id})");
+        AuditWriter::logLogin($user->id, $user->username, $user->role, [
+            'login_at' => date('Y-m-d H:i:s'),
+            'last_login_ip' => $request->ip(),
+        ]);
 
         return json_success([
             'token' => $token,
@@ -140,6 +145,15 @@ class AuthController
         $isVip = $level && $level->level >= 3;
 
         Log::info("新用户注册: {$user->username} (ID: {$user->id})");
+        AuditWriter::logCreate('user', $user->id, $user->username, [
+            'username' => $user->username,
+            'nickname' => $user->nickname,
+            'email'    => $user->email,
+            'phone'    => $user->phone,
+            'role'     => $user->role,
+            'member_level_id' => $user->member_level_id,
+            'status'   => $user->status,
+        ]);
 
         return json_success([
             'token' => $token,
@@ -202,6 +216,12 @@ class AuthController
         }
 
         $data = getRequestData($request);
+        $beforeData = [
+            'nickname' => $user->nickname,
+            'email'    => $user->email,
+            'phone'    => $user->phone,
+            'avatar'   => $user->avatar,
+        ];
 
         if (!empty($data['nickname'])) {
             if (mb_strlen($data['nickname']) < 2 || mb_strlen($data['nickname']) > 50) {
@@ -242,7 +262,15 @@ class AuthController
 
         $user->save();
 
+        $afterData = [
+            'nickname' => $user->nickname,
+            'email'    => $user->email,
+            'phone'    => $user->phone,
+            'avatar'   => $user->avatar,
+        ];
+
         Log::info("用户更新资料: {$user->username} (ID: {$user->id})");
+        AuditWriter::logUpdate('user', $user->id, $user->username, $beforeData, $afterData);
 
         $level = MemberLevel::find($user->member_level_id);
         $todayCount = DailyQuota::countToday($user->id, '');
@@ -294,6 +322,11 @@ class AuthController
         $user->save();
 
         Log::info("用户修改密码: {$user->username} (ID: {$user->id})");
+        AuditWriter::logUpdate('user', $user->id, $user->username, [
+            'password' => '***',
+        ], [
+            'password' => '***',
+        ]);
 
         return json_success([], '密码修改成功');
     }

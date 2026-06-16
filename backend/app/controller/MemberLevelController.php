@@ -4,6 +4,7 @@ namespace app\controller;
 
 use app\model\MemberLevel;
 use app\model\User;
+use app\service\AuditWriter;
 use think\facade\Log;
 use think\facade\Validate;
 use think\Request;
@@ -55,6 +56,12 @@ class MemberLevelController
         $level->save();
 
         Log::info("创建会员等级: {$level->name} (Level: {$level->level}, Quota: {$level->daily_quota})");
+        AuditWriter::logCreate('level', $level->id, $level->name, [
+            'name'        => $level->name,
+            'level'       => $level->level,
+            'description' => $level->description,
+            'daily_quota' => $level->daily_quota,
+        ]);
 
         return json_success($level, '会员等级创建成功');
     }
@@ -67,6 +74,12 @@ class MemberLevelController
         }
 
         $data = getRequestData($request);
+        $beforeData = [
+            'name'        => $level->name,
+            'level'       => $level->level,
+            'description' => $level->description,
+            'daily_quota' => $level->daily_quota,
+        ];
 
         if (isset($data['name'])) {
             if (empty($data['name']) || mb_strlen($data['name']) > 50) {
@@ -97,7 +110,15 @@ class MemberLevelController
 
         $level->save();
 
+        $afterData = [
+            'name'        => $level->name,
+            'level'       => $level->level,
+            'description' => $level->description,
+            'daily_quota' => $level->daily_quota,
+        ];
+
         Log::info("更新会员等级: {$level->name} (ID: {$id}, Quota: {$level->daily_quota})");
+        AuditWriter::logUpdate('level', $level->id, $level->name, $beforeData, $afterData);
 
         return json_success($level, '会员等级更新成功');
     }
@@ -115,9 +136,16 @@ class MemberLevelController
         }
 
         $name = $level->name;
+        $beforeData = [
+            'name'        => $level->name,
+            'level'       => $level->level,
+            'description' => $level->description,
+            'daily_quota' => $level->daily_quota,
+        ];
         $level->delete();
 
         Log::info("删除会员等级: {$name} (ID: {$id})");
+        AuditWriter::logDelete('level', $id, $name, $beforeData);
 
         return json_success([], '会员等级删除成功');
     }

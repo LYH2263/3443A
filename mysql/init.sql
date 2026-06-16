@@ -239,3 +239,24 @@ INSERT INTO `background_images` (`name`, `path`, `category`, `created_at`) VALUE
 ('商务蓝色科技', '/images/bg1.png', 'default', NOW()),
 ('简约白色纹理', '/images/bg2.png', 'default', NOW()),
 ('暖色渐变波浪', '/images/bg3.png', 'default', NOW());
+
+-- 审计日志表
+CREATE TABLE IF NOT EXISTS `audit_logs` (
+  `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `operator_id` INT UNSIGNED DEFAULT NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(100) DEFAULT '' COMMENT '操作人用户名/昵称',
+  `operator_role` VARCHAR(20) DEFAULT '' COMMENT '操作人角色 admin/user/guest',
+  `action_type` VARCHAR(50) NOT NULL COMMENT '动作类型: create/update/delete/login/qrcode/other',
+  `target_type` VARCHAR(50) NOT NULL COMMENT '目标对象类型: album/user/category/level/system',
+  `target_id` VARCHAR(100) DEFAULT '' COMMENT '目标对象ID',
+  `target_name` VARCHAR(255) DEFAULT '' COMMENT '目标对象名称(冗余方便检索)',
+  `change_summary` JSON DEFAULT NULL COMMENT '变更摘要 JSON: {before:{},after:{}}',
+  `ip` VARCHAR(45) DEFAULT '' COMMENT 'IP地址',
+  `user_agent` VARCHAR(500) DEFAULT '' COMMENT 'User-Agent',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  KEY `idx_operator` (`operator_id`),
+  KEY `idx_action_type` (`action_type`),
+  KEY `idx_target` (`target_type`, `target_id`),
+  KEY `idx_created_at` (`created_at`),
+  KEY `idx_operator_created` (`operator_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='审计日志表';

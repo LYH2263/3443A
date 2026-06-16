@@ -13,6 +13,7 @@ const routes = {
     '/admin/levels': { render: renderAdminLevels, init: initAdminLevels, auth: true, admin: true },
     '/admin/categories': { render: renderAdminCategories, init: initAdminCategories, auth: true, admin: true },
     '/admin/backgrounds': { render: renderAdminBackgrounds, init: initAdminBackgrounds, auth: true, admin: true },
+    '/admin/audit-logs': { render: renderAdminAuditLogs, init: initAdminAuditLogs, auth: true, admin: true },
 };
 
 function matchRoute(path) {
