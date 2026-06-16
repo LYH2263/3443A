@@ -138,6 +138,10 @@ const api = {
         deletePage: (albumId, id) => apiRequest(`/admin/albums/${albumId}/pages/${id}`, { method: 'DELETE' }),
         sortPages: (albumId, pages) => apiRequest(`/admin/albums/${albumId}/pages/sort`, { method: 'POST', body: { pages } }),
         generateQrcode: (data) => apiRequest('/admin/qrcode/generate', { method: 'POST', body: data }),
+        watermarkPreviewUrl: (params) => {
+            const query = new URLSearchParams(params).toString();
+            return `${API_BASE}/admin/watermark/preview?${query}`;
+        },
         users: (params) => apiRequest('/admin/users?' + new URLSearchParams(params || {})),
         userDetail: (id) => apiRequest(`/admin/users/${id}`),
         createUser: (data) => apiRequest('/admin/users', { method: 'POST', body: data }),

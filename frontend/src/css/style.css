@@ -458,6 +458,21 @@ input:-webkit-autofill:focus {
 }
 #flipbook .page img {
     width: 100%; height: 100%; object-fit: cover;
+    display: block;
+}
+#flipbook .page .page-image-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+#flipbook .page .page-watermark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 2;
 }
 #flipbook .page .page-content {
     width: 100%; height: 100%; display: flex;
@@ -690,6 +705,38 @@ input:-webkit-autofill:focus {
 }
 .page-card-actions {
     padding: 8px; display: flex; justify-content: center; gap: 8px;
+}
+
+/* Switch Toggle */
+.switch-label {
+    display: inline-flex; align-items: center; cursor: pointer;
+}
+.switch-label input { display: none; }
+.switch-slider {
+    position: relative; width: 40px; height: 22px;
+    background: var(--gray-300); border-radius: 22px;
+    transition: var(--transition);
+}
+.switch-slider::before {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 18px; height: 18px; background: var(--white);
+    border-radius: 50%; transition: var(--transition);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.switch-label input:checked + .switch-slider {
+    background: var(--primary);
+}
+.switch-label input:checked + .switch-slider::before {
+    transform: translateX(18px);
+}
+
+/* Watermark Preview */
+.watermark-preview-box {
+    border: 1px solid var(--gray-200); border-radius: var(--radius);
+    overflow: hidden; background: var(--gray-50);
+}
+.watermark-preview-box canvas {
+    display: block; width: 100%; height: auto;
 }
 
 /* Loading */

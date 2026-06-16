@@ -63,6 +63,9 @@ Route::group('api/admin', function () {
     // QR Code
     Route::post('qrcode/generate', 'QrcodeController@generate');
 
+    // Watermark Preview
+    Route::get('watermark/preview', 'AlbumController@watermarkPreview');
+
     // Users
     Route::get('users/:id', 'UserController@detail')->pattern(['id' => '\d+']);
     Route::get('users', 'UserController@index');

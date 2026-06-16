@@ -140,6 +140,7 @@ class AlbumController
 
         $userLevel = 0;
         $userId = null;
+        $user = null;
         $token = $request->header('Authorization', '');
         if (str_starts_with($token, 'Bearer ')) {
             $token = substr($token, 7);
@@ -200,6 +201,9 @@ class AlbumController
                 return $page;
             });
 
+        $ipSuffix = $this->getIpSuffix($request->ip());
+        $viewerName = $userId ? ($user->nickname ?: $user->username) : '';
+
         return json_success([
             'need_password' => false,
             'album' => [
@@ -213,9 +217,36 @@ class AlbumController
                 'qrcode_text_line2'    => $album->qrcode_text_line2,
                 'category'             => $album->category,
                 'view_count'           => $album->view_count,
+                'watermark' => [
+                    'enabled' => (bool)$album->watermark_enabled,
+                    'text'    => $album->watermark_text,
+                    'opacity' => (float)$album->watermark_opacity,
+                    'density' => (int)$album->watermark_density,
+                    'color'   => $album->watermark_color,
+                ],
+            ],
+            'viewer' => [
+                'username'  => $viewerName,
+                'is_guest'  => !$userId,
+                'ip_suffix' => $ipSuffix,
+                'date'      => date('Y-m-d'),
             ],
             'pages' => $pages,
         ]);
+    }
+
+    private function getIpSuffix($ip)
+    {
+        if (strpos($ip, ':') !== false) {
+            $parts = explode(':', $ip);
+            $count = count($parts);
+            return $count >= 2 ? implode(':', array_slice($parts, -2)) : $ip;
+        }
+        $parts = explode('.', $ip);
+        if (count($parts) === 4) {
+            return $parts[2] . '.' . $parts[3];
+        }
+        return '';
     }
 
     public function store(Request $request)
@@ -246,6 +277,11 @@ class AlbumController
         $album->qrcode_text_line2 = $data['qrcode_text_line2'] ?? '';
         $album->status = $data['status'] ?? 1;
         $album->sort_order = $data['sort_order'] ?? 0;
+        $album->watermark_enabled = $data['watermark_enabled'] ?? 0;
+        $album->watermark_text = $data['watermark_text'] ?? '';
+        $album->watermark_opacity = $data['watermark_opacity'] ?? 0.15;
+        $album->watermark_density = $data['watermark_density'] ?? 3;
+        $album->watermark_color = $data['watermark_color'] ?? '#000000';
         $album->creator_id = $request->uid;
         $album->save();
 
@@ -272,7 +308,9 @@ class AlbumController
 
         $fields = ['description', 'cover_image', 'background_image', 'category_id',
                     'min_level', 'share_password', 'qrcode_logo',
-                    'qrcode_text_line1', 'qrcode_text_line2', 'status', 'sort_order'];
+                    'qrcode_text_line1', 'qrcode_text_line2', 'status', 'sort_order',
+                    'watermark_enabled', 'watermark_text', 'watermark_opacity',
+                    'watermark_density', 'watermark_color'];
 
         foreach ($fields as $field) {
             if (array_key_exists($field, $data)) {
@@ -316,5 +354,111 @@ class AlbumController
             ->select();
 
         return json_success($list);
+    }
+
+    public function watermarkPreview(Request $request)
+    {
+        $text = $request->get('text', '');
+        $opacity = (float)($request->get('opacity', 0.15));
+        $density = (int)($request->get('density', 3));
+        $color = $request->get('color', '#000000');
+        $width = (int)($request->get('width', 400));
+        $height = (int)($request->get('height', 300));
+
+        if ($opacity < 0) $opacity = 0;
+        if ($opacity > 1) $opacity = 1;
+        if ($density < 1) $density = 1;
+        if ($density > 5) $density = 5;
+        if ($width < 100) $width = 100;
+        if ($width > 1200) $width = 1200;
+        if ($height < 100) $height = 100;
+        if ($height > 900) $height = 900;
+
+        $image = imagecreatetruecolor($width, $height);
+        $bgColor = imagecolorallocate($image, 240, 240, 245);
+        imagefill($image, 0, 0, $bgColor);
+
+        $sampleText = $text ?: '示例水印文字';
+        $fontSize = 14;
+        $angle = -25;
+
+        $rgb = $this->hexToRgb($color);
+        $alpha = (int)((1 - $opacity) * 127);
+        if ($alpha < 0) $alpha = 0;
+        if ($alpha > 127) $alpha = 127;
+
+        $watermarkColor = imagecolorallocatealpha($image, $rgb['r'], $rgb['g'], $rgb['b'], $alpha);
+
+        $fontPath = $this->getFontPath();
+
+        $spacingX = (int)(200 / $density);
+        $spacingY = (int)(120 / $density);
+
+        $diagonal = sqrt($width * $width + $height * $height);
+        $startX = (int)(-$diagonal / 2);
+        $endX = (int)($diagonal / 2 + $spacingX);
+        $startY = (int)(-$diagonal / 2);
+        $endY = (int)($diagonal / 2 + $spacingY);
+
+        for ($y = $startY; $y < $endY; $y += $spacingY) {
+            for ($x = $startX; $x < $endX; $x += $spacingX) {
+                if ($fontPath) {
+                    imagettftext($image, $fontSize, $angle, $x, $y, $watermarkColor, $fontPath, $sampleText);
+                } else {
+                    $this->imagestringrotated($image, $fontSize, $x, $y, $sampleText, $watermarkColor, $angle);
+                }
+            }
+        }
+
+        header('Content-Type: image/png');
+        imagepng($image);
+        imagedestroy($image);
+        exit;
+    }
+
+    private function hexToRgb($hex)
+    {
+        $hex = str_replace('#', '', $hex);
+        if (strlen($hex) === 3) {
+            $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+        }
+        return [
+            'r' => hexdec(substr($hex, 0, 2)),
+            'g' => hexdec(substr($hex, 2, 2)),
+            'b' => hexdec(substr($hex, 4, 2)),
+        ];
+    }
+
+    private function getFontPath()
+    {
+        $commonPaths = [
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+            '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+            '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+            '/System/Library/Fonts/PingFang.ttc',
+            'C:/Windows/Fonts/msyh.ttc',
+            'C:/Windows/Fonts/simhei.ttf',
+        ];
+        foreach ($commonPaths as $path) {
+            if (file_exists($path)) {
+                return $path;
+            }
+        }
+        return null;
+    }
+
+    private function imagestringrotated($image, $size, $x, $y, $text, $color, $angle)
+    {
+        $angle = deg2rad($angle);
+        $len = strlen($text);
+        for ($i = 0; $i < $len; $i++) {
+            $char = $text[$i];
+            $charWidth = imagefontwidth($size);
+            $charHeight = imagefontheight($size);
+            $dx = $i * $charWidth;
+            $rotX = $x + $dx * cos($angle);
+            $rotY = $y + $dx * sin($angle);
+            imagestring($image, $size, (int)$rotX, (int)$rotY, $char, $color);
+        }
     }
 }

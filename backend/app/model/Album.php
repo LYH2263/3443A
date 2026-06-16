@@ -13,13 +13,16 @@ class Album extends Model
     protected $updateTime = 'updated_at';
 
     protected $type = [
-        'id'          => 'integer',
-        'category_id' => 'integer',
-        'min_level'   => 'integer',
-        'view_count'  => 'integer',
-        'status'      => 'integer',
-        'sort_order'  => 'integer',
-        'creator_id'  => 'integer',
+        'id'                => 'integer',
+        'category_id'       => 'integer',
+        'min_level'         => 'integer',
+        'view_count'        => 'integer',
+        'status'            => 'integer',
+        'sort_order'        => 'integer',
+        'creator_id'        => 'integer',
+        'watermark_enabled' => 'integer',
+        'watermark_density' => 'integer',
+        'watermark_opacity' => 'float',
     ];
 
     public function category()

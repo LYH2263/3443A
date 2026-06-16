@@ -34,12 +34,17 @@ async function initAdminAlbumEdit(id) {
                 title: '', description: '', cover_image: '', background_image: '',
                 category_id: '', min_level: 0, share_password: '', status: 1,
                 qrcode_logo: '', qrcode_text_line1: '', qrcode_text_line2: '',
-                sort_order: 0
+                sort_order: 0,
+                watermark_enabled: 0, watermark_text: '', watermark_opacity: 0.15,
+                watermark_density: 3, watermark_color: '#000000'
             };
             editAlbumState.pages = [];
         }
 
         renderAlbumEditForm(id);
+        if (editAlbumState.album.watermark_enabled) {
+            setTimeout(() => initWatermarkPreview(), 100);
+        }
     } catch (e) {
         document.getElementById('album-edit-content').innerHTML = renderEmpty('加载失败');
     }
@@ -108,6 +113,55 @@ function renderAlbumEditForm(id) {
                                 </div>
                             </div>
                         </form>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-bottom:24px">
+                    <div class="card-header">
+                        <h2>水印设置</h2>
+                        <label class="switch-label">
+                            <input type="checkbox" id="watermark-enabled" ${a.watermark_enabled ? 'checked' : ''} onchange="toggleWatermarkSettings()">
+                            <span class="switch-slider"></span>
+                            <span style="margin-left:8px;font-size:13px;font-weight:400">启用水印</span>
+                        </label>
+                    </div>
+                    <div class="card-body" id="watermark-settings" style="${a.watermark_enabled ? '' : 'display:none'}">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                            <div class="form-group">
+                                <label class="form-label">水印文字</label>
+                                <input type="text" class="form-input" id="watermark-text" value="${escapeHtml(a.watermark_text || '')}" placeholder="支持{用户名} {日期} {IP后两段}" oninput="updateWatermarkPreview()">
+                                <p style="font-size:12px;color:var(--gray-400);margin-top:4px">可用占位符: {'{'}用户名{'}'} {'{'}日期{'}'} {'{'}IP后两段{'}'}</p>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">水印颜色</label>
+                                <div style="display:flex;gap:8px;align-items:center">
+                                    <input type="color" id="watermark-color" value="${a.watermark_color || '#000000'}" oninput="updateWatermarkPreview()" style="width:40px;height:38px;border:1px solid var(--gray-300);border-radius:var(--radius);cursor:pointer;background:none">
+                                    <input type="text" class="form-input" id="watermark-color-text" value="${a.watermark_color || '#000000'}" oninput="syncWatermarkColor()" style="flex:1">
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                            <div class="form-group">
+                                <label class="form-label">透明度: <span id="opacity-value">${Math.round((a.watermark_opacity || 0.15) * 100)}%</span></label>
+                                <input type="range" id="watermark-opacity" min="5" max="50" value="${Math.round((a.watermark_opacity || 0.15) * 100)}" oninput="updateOpacityLabel();updateWatermarkPreview()" style="width:100%">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">平铺密度</label>
+                                <select class="form-select" id="watermark-density" onchange="updateWatermarkPreview()">
+                                    <option value="1" ${a.watermark_density == 1 ? 'selected' : ''}>稀疏</option>
+                                    <option value="2" ${a.watermark_density == 2 ? 'selected' : ''}>较稀</option>
+                                    <option value="3" ${a.watermark_density == 3 ? 'selected' : ''}>适中</option>
+                                    <option value="4" ${a.watermark_density == 4 ? 'selected' : ''}>较密</option>
+                                    <option value="5" ${a.watermark_density == 5 ? 'selected' : ''}>密集</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">实时预览</label>
+                            <div class="watermark-preview-box">
+                                <canvas id="watermark-preview-canvas" width="400" height="280"></canvas>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -297,6 +351,11 @@ async function saveAlbum(id) {
         status: parseInt(document.getElementById('album-status').value),
         qrcode_text_line1: document.getElementById('qr-text1').value.trim(),
         qrcode_text_line2: document.getElementById('qr-text2').value.trim(),
+        watermark_enabled: document.getElementById('watermark-enabled').checked ? 1 : 0,
+        watermark_text: document.getElementById('watermark-text').value.trim(),
+        watermark_opacity: parseInt(document.getElementById('watermark-opacity').value) / 100,
+        watermark_density: parseInt(document.getElementById('watermark-density').value),
+        watermark_color: document.getElementById('watermark-color').value,
     };
 
     if (window._albumCoverPath) data.cover_image = window._albumCoverPath;
@@ -360,4 +419,101 @@ async function deleteAlbumPage(albumId, pageId) {
             initAdminAlbumEdit(albumId);
         } catch (e) {}
     });
+}
+
+function toggleWatermarkSettings() {
+    const enabled = document.getElementById('watermark-enabled').checked;
+    const settingsEl = document.getElementById('watermark-settings');
+    if (enabled) {
+        settingsEl.style.display = 'block';
+        updateWatermarkPreview();
+    } else {
+        settingsEl.style.display = 'none';
+    }
+}
+
+function syncWatermarkColor() {
+    const colorText = document.getElementById('watermark-color-text').value;
+    if (/^#[0-9A-Fa-f]{6}$/.test(colorText) || /^#[0-9A-Fa-f]{3}$/.test(colorText)) {
+        document.getElementById('watermark-color').value = colorText;
+        updateWatermarkPreview();
+    }
+}
+
+function updateOpacityLabel() {
+    const opacity = document.getElementById('watermark-opacity').value;
+    document.getElementById('opacity-value').textContent = opacity + '%';
+}
+
+function updateWatermarkPreview() {
+    const canvas = document.getElementById('watermark-preview-canvas');
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const text = document.getElementById('watermark-text').value || '示例水印';
+    const color = document.getElementById('watermark-color').value;
+    const opacity = parseInt(document.getElementById('watermark-opacity').value) / 100;
+    const density = parseInt(document.getElementById('watermark-density').value);
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+
+    const w = rect.width;
+    const h = rect.height;
+
+    ctx.clearRect(0, 0, w, h);
+
+    const gradient = ctx.createLinearGradient(0, 0, w, h);
+    gradient.addColorStop(0, '#e0e7ff');
+    gradient.addColorStop(1, '#c7d2fe');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.fillStyle = '#6366f1';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText('预览图', 20, 30);
+
+    drawWatermarkText(ctx, text, color, opacity, density, w, h);
+}
+
+function drawWatermarkText(ctx, text, color, opacity, density, width, height) {
+    ctx.save();
+
+    const fontSize = 14;
+    const angle = -25 * Math.PI / 180;
+    const spacingX = 180 / density;
+    const spacingY = 100 / density;
+
+    ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif`;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = opacity;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const diagonal = Math.sqrt(width * width + height * height);
+    const startX = -diagonal / 2;
+    const endX = diagonal / 2 + spacingX;
+    const startY = -diagonal / 2;
+    const endY = diagonal / 2 + spacingY;
+
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate(angle);
+
+    for (let y = startY; y < endY; y += spacingY) {
+        for (let x = startX; x < endX; x += spacingX) {
+            ctx.fillText(text, x, y);
+        }
+    }
+
+    ctx.restore();
+}
+
+function initWatermarkPreview() {
+    const canvas = document.getElementById('watermark-preview-canvas');
+    if (canvas) {
+        setTimeout(() => updateWatermarkPreview(), 50);
+    }
 }
