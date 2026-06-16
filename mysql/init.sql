@@ -260,3 +260,17 @@ CREATE TABLE IF NOT EXISTS `audit_logs` (
   KEY `idx_created_at` (`created_at`),
   KEY `idx_operator_created` (`operator_id`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='审计日志表';
+
+-- 页面浏览统计表
+CREATE TABLE IF NOT EXISTS `page_view_stats` (
+  `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `album_id` INT UNSIGNED NOT NULL COMMENT '画册ID',
+  `page_number` INT UNSIGNED NOT NULL COMMENT '页码',
+  `total_seconds` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计停留秒数',
+  `entry_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入次数',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_album_page` (`album_id`, `page_number`),
+  KEY `idx_album` (`album_id`),
+  KEY `idx_total_seconds` (`album_id`, `total_seconds`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='页面浏览统计表';

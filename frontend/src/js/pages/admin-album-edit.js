@@ -1,4 +1,9 @@
-let editAlbumState = { album: null, categories: [], levels: [], backgrounds: [], pages: [], isNew: true };
+let editAlbumState = {
+    album: null, categories: [], levels: [], backgrounds: [], pages: [], isNew: true,
+    activeTab: 'basic',
+    heatmapData: null,
+    heatmapLoading: false,
+};
 
 function renderAdminAlbumEdit(id) {
     editAlbumState.isNew = !id;
@@ -68,176 +73,199 @@ function renderAlbumEditForm(id) {
         ? `<div style="margin-top:12px"><img src="${getImageUrl(a.qrcode_image_url)}" alt="二维码" style="max-width:200px;border-radius:8px;box-shadow:var(--shadow)"></div>`
         : '';
 
+    const tabs = id ? [
+        { key: 'basic', label: '基本信息', icon: '&#9998;' },
+        { key: 'heatmap', label: '阅读热力图', icon: '&#128293;' },
+    ] : [
+        { key: 'basic', label: '基本信息', icon: '&#9998;' },
+    ];
+
     container.innerHTML = `
         <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px">
             <div>
-                <div class="card" style="margin-bottom:24px">
-                    <div class="card-header"><h2>基本信息</h2></div>
-                    <div class="card-body">
-                        <form id="album-form">
-                            <div class="form-group">
-                                <label class="form-label">画册标题 <span class="required">*</span></label>
-                                <input type="text" class="form-input" id="album-title" value="${escapeHtml(a.title)}" placeholder="请输入画册标题" required>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">画册描述</label>
-                                <textarea class="form-textarea" id="album-desc" placeholder="请输入画册描述">${escapeHtml(a.description || '')}</textarea>
-                            </div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-                                <div class="form-group">
-                                    <label class="form-label">分类</label>
-                                    <select class="form-select" id="album-category">
-                                        <option value="">请选择分类</option>
-                                        ${editAlbumState.categories.map(c => `<option value="${c.id}" ${a.category_id == c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">最低访问等级</label>
-                                    <select class="form-select" id="album-min-level">
-                                        <option value="0" ${a.min_level == 0 ? 'selected' : ''}>公开（所有人可见）</option>
-                                        ${editAlbumState.levels.map(l => `<option value="${l.level}" ${a.min_level == l.level ? 'selected' : ''}>${escapeHtml(l.name)}（等级${l.level}）</option>`).join('')}
-                                    </select>
-                                </div>
-                            </div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-                                <div class="form-group">
-                                    <label class="form-label">分享密码</label>
-                                    <input type="text" class="form-input" id="album-password" value="${escapeHtml(a.share_password || '')}" placeholder="留空则无密码限制">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">发布状态</label>
-                                    <select class="form-select" id="album-status">
-                                        <option value="1" ${a.status == 1 ? 'selected' : ''}>已发布</option>
-                                        <option value="0" ${a.status == 0 ? 'selected' : ''}>草稿</option>
-                                    </select>
-                                </div>
-                            </div>
-                            ${id ? `
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px">
-                                <div class="form-group" style="margin-bottom:0">
-                                    <label class="form-label">浏览量</label>
-                                    <div style="padding:10px 14px;background:var(--gray-50);border-radius:var(--radius);color:var(--gray-700);font-weight:500">
-                                        &#128065; ${a.view_count || 0} 次浏览
-                                    </div>
-                                </div>
-                                <div class="form-group" style="margin-bottom:0">
-                                    <label class="form-label">收藏数</label>
-                                    <div style="padding:10px 14px;background:var(--gray-50);border-radius:var(--radius);color:#D97706;font-weight:500">
-                                        &#11088; ${a.favorite_count || 0} 人收藏
-                                    </div>
-                                </div>
-                            </div>
-                            ` : ''}
-                        </form>
-                    </div>
-                </div>
-
-                <div class="card" style="margin-bottom:24px">
-                    <div class="card-header">
-                        <h2>水印设置</h2>
-                        <label class="switch-label">
-                            <input type="checkbox" id="watermark-enabled" ${a.watermark_enabled ? 'checked' : ''} onchange="toggleWatermarkSettings()">
-                            <span class="switch-slider"></span>
-                            <span style="margin-left:8px;font-size:13px;font-weight:400">启用水印</span>
-                        </label>
-                    </div>
-                    <div class="card-body" id="watermark-settings" style="${a.watermark_enabled ? '' : 'display:none'}">
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-                            <div class="form-group">
-                                <label class="form-label">水印文字</label>
-                                <input type="text" class="form-input" id="watermark-text" value="${escapeHtml(a.watermark_text || '')}" placeholder="支持{用户名} {日期} {IP后两段}" oninput="updateWatermarkPreview()">
-                                <p style="font-size:12px;color:var(--gray-400);margin-top:4px">可用占位符: {'{'}用户名{'}'} {'{'}日期{'}'} {'{'}IP后两段{'}'}</p>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">水印颜色</label>
-                                <div style="display:flex;gap:8px;align-items:center">
-                                    <input type="color" id="watermark-color" value="${a.watermark_color || '#000000'}" oninput="updateWatermarkPreview()" style="width:40px;height:38px;border:1px solid var(--gray-300);border-radius:var(--radius);cursor:pointer;background:none">
-                                    <input type="text" class="form-input" id="watermark-color-text" value="${a.watermark_color || '#000000'}" oninput="syncWatermarkColor()" style="flex:1">
-                                </div>
-                            </div>
-                        </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-                            <div class="form-group">
-                                <label class="form-label">透明度: <span id="opacity-value">${Math.round((a.watermark_opacity || 0.15) * 100)}%</span></label>
-                                <input type="range" id="watermark-opacity" min="5" max="50" value="${Math.round((a.watermark_opacity || 0.15) * 100)}" oninput="updateOpacityLabel();updateWatermarkPreview()" style="width:100%">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">平铺密度</label>
-                                <select class="form-select" id="watermark-density" onchange="updateWatermarkPreview()">
-                                    <option value="1" ${a.watermark_density == 1 ? 'selected' : ''}>稀疏</option>
-                                    <option value="2" ${a.watermark_density == 2 ? 'selected' : ''}>较稀</option>
-                                    <option value="3" ${a.watermark_density == 3 ? 'selected' : ''}>适中</option>
-                                    <option value="4" ${a.watermark_density == 4 ? 'selected' : ''}>较密</option>
-                                    <option value="5" ${a.watermark_density == 5 ? 'selected' : ''}>密集</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">实时预览</label>
-                            <div class="watermark-preview-box">
-                                <canvas id="watermark-preview-canvas" width="400" height="280"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card" style="margin-bottom:24px">
-                    <div class="card-header"><h2>封面与背景</h2></div>
-                    <div class="card-body">
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-                            <div>
-                                <label class="form-label">封面图片</label>
-                                ${createUploadArea('cover')}
-                                <div id="cover-preview">${coverPreview}</div>
-                            </div>
-                            <div>
-                                <label class="form-label">背景图片</label>
-                                ${createUploadArea('background')}
-                                <div id="bg-preview">${bgPreview}</div>
-                                ${editAlbumState.backgrounds.length > 0 ? `
-                                    <div style="margin-top:16px">
-                                        <label class="form-label">或从图库选择背景</label>
-                                        <div class="bg-grid">
-                                            ${editAlbumState.backgrounds.map(bg => `
-                                                <div class="bg-grid-item ${a.background_image === bg.path ? 'selected' : ''}" onclick="selectBackground('${bg.path}','${getImageUrl(bg.url || bg.path)}')">
-                                                    <img src="${getImageUrl(bg.url || bg.path)}" alt="${escapeHtml(bg.name)}" onerror="this.parentElement.style.display='none'">
-                                                    <div class="bg-check">&#10004;</div>
-                                                </div>
-                                            `).join('')}
-                                        </div>
-                                    </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 ${id ? `
-                <div class="card" style="margin-bottom:24px">
-                    <div class="card-header">
-                        <h2>画册页面 (${editAlbumState.pages.length})</h2>
-                        <div>
-                            ${createUploadArea('pages')}
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="pages-grid" id="pages-grid">
-                            ${editAlbumState.pages.length === 0 ? renderEmpty('暂无页面，请上传图片添加页面') : ''}
-                            ${editAlbumState.pages.map((p, i) => `
-                                <div class="page-card" data-id="${p.id}">
-                                    <div class="page-card-image">
-                                        <img src="${getImageUrl(p.image_url || p.image)}" alt="第${i + 1}页" onerror="this.src='${getPlaceholderImage()}'">
-                                        <span class="page-card-number">第${p.page_number}页</span>
-                                    </div>
-                                    <div class="page-card-actions">
-                                        <button class="btn btn-sm btn-danger" onclick="deleteAlbumPage(${id},${p.id})">&#128465; 删除</button>
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
+                <div class="tabs" style="margin-bottom:16px">
+                    ${tabs.map(t => `
+                        <button class="tab-btn ${editAlbumState.activeTab === t.key ? 'active' : ''}" onclick="switchEditTab('${t.key}', ${id})">
+                            ${t.icon} ${t.label}
+                        </button>
+                    `).join('')}
                 </div>
                 ` : ''}
+
+                <div id="tab-basic" style="${editAlbumState.activeTab === 'basic' ? '' : 'display:none'}">
+                    <div class="card" style="margin-bottom:24px">
+                        <div class="card-header"><h2>基本信息</h2></div>
+                        <div class="card-body">
+                            <form id="album-form">
+                                <div class="form-group">
+                                    <label class="form-label">画册标题 <span class="required">*</span></label>
+                                    <input type="text" class="form-input" id="album-title" value="${escapeHtml(a.title)}" placeholder="请输入画册标题" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">画册描述</label>
+                                    <textarea class="form-textarea" id="album-desc" placeholder="请输入画册描述">${escapeHtml(a.description || '')}</textarea>
+                                </div>
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                                    <div class="form-group">
+                                        <label class="form-label">分类</label>
+                                        <select class="form-select" id="album-category">
+                                            <option value="">请选择分类</option>
+                                            ${editAlbumState.categories.map(c => `<option value="${c.id}" ${a.category_id == c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">最低访问等级</label>
+                                        <select class="form-select" id="album-min-level">
+                                            <option value="0" ${a.min_level == 0 ? 'selected' : ''}>公开（所有人可见）</option>
+                                            ${editAlbumState.levels.map(l => `<option value="${l.level}" ${a.min_level == l.level ? 'selected' : ''}>${escapeHtml(l.name)}（等级${l.level}）</option>`).join('')}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                                    <div class="form-group">
+                                        <label class="form-label">分享密码</label>
+                                        <input type="text" class="form-input" id="album-password" value="${escapeHtml(a.share_password || '')}" placeholder="留空则无密码限制">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">发布状态</label>
+                                        <select class="form-select" id="album-status">
+                                            <option value="1" ${a.status == 1 ? 'selected' : ''}>已发布</option>
+                                            <option value="0" ${a.status == 0 ? 'selected' : ''}>草稿</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                ${id ? `
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px">
+                                    <div class="form-group" style="margin-bottom:0">
+                                        <label class="form-label">浏览量</label>
+                                        <div style="padding:10px 14px;background:var(--gray-50);border-radius:var(--radius);color:var(--gray-700);font-weight:500">
+                                            &#128065; ${a.view_count || 0} 次浏览
+                                        </div>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0">
+                                        <label class="form-label">收藏数</label>
+                                        <div style="padding:10px 14px;background:var(--gray-50);border-radius:var(--radius);color:#D97706;font-weight:500">
+                                            &#11088; ${a.favorite_count || 0} 人收藏
+                                        </div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-bottom:24px">
+                        <div class="card-header">
+                            <h2>水印设置</h2>
+                            <label class="switch-label">
+                                <input type="checkbox" id="watermark-enabled" ${a.watermark_enabled ? 'checked' : ''} onchange="toggleWatermarkSettings()">
+                                <span class="switch-slider"></span>
+                                <span style="margin-left:8px;font-size:13px;font-weight:400">启用水印</span>
+                            </label>
+                        </div>
+                        <div class="card-body" id="watermark-settings" style="${a.watermark_enabled ? '' : 'display:none'}">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                                <div class="form-group">
+                                    <label class="form-label">水印文字</label>
+                                    <input type="text" class="form-input" id="watermark-text" value="${escapeHtml(a.watermark_text || '')}" placeholder="支持{用户名} {日期} {IP后两段}" oninput="updateWatermarkPreview()">
+                                    <p style="font-size:12px;color:var(--gray-400);margin-top:4px">可用占位符: {'{'}用户名{'}'} {'{'}日期{'}'} {'{'}IP后两段{'}'}</p>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">水印颜色</label>
+                                    <div style="display:flex;gap:8px;align-items:center">
+                                        <input type="color" id="watermark-color" value="${a.watermark_color || '#000000'}" oninput="updateWatermarkPreview()" style="width:40px;height:38px;border:1px solid var(--gray-300);border-radius:var(--radius);cursor:pointer;background:none">
+                                        <input type="text" class="form-input" id="watermark-color-text" value="${a.watermark_color || '#000000'}" oninput="syncWatermarkColor()" style="flex:1">
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                                <div class="form-group">
+                                    <label class="form-label">透明度: <span id="opacity-value">${Math.round((a.watermark_opacity || 0.15) * 100)}%</span></label>
+                                    <input type="range" id="watermark-opacity" min="5" max="50" value="${Math.round((a.watermark_opacity || 0.15) * 100)}" oninput="updateOpacityLabel();updateWatermarkPreview()" style="width:100%">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">平铺密度</label>
+                                    <select class="form-select" id="watermark-density" onchange="updateWatermarkPreview()">
+                                        <option value="1" ${a.watermark_density == 1 ? 'selected' : ''}>稀疏</option>
+                                        <option value="2" ${a.watermark_density == 2 ? 'selected' : ''}>较稀</option>
+                                        <option value="3" ${a.watermark_density == 3 ? 'selected' : ''}>适中</option>
+                                        <option value="4" ${a.watermark_density == 4 ? 'selected' : ''}>较密</option>
+                                        <option value="5" ${a.watermark_density == 5 ? 'selected' : ''}>密集</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">实时预览</label>
+                                <div class="watermark-preview-box">
+                                    <canvas id="watermark-preview-canvas" width="400" height="280"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-bottom:24px">
+                        <div class="card-header"><h2>封面与背景</h2></div>
+                        <div class="card-body">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                                <div>
+                                    <label class="form-label">封面图片</label>
+                                    ${createUploadArea('cover')}
+                                    <div id="cover-preview">${coverPreview}</div>
+                                </div>
+                                <div>
+                                    <label class="form-label">背景图片</label>
+                                    ${createUploadArea('background')}
+                                    <div id="bg-preview">${bgPreview}</div>
+                                    ${editAlbumState.backgrounds.length > 0 ? `
+                                        <div style="margin-top:16px">
+                                            <label class="form-label">或从图库选择背景</label>
+                                            <div class="bg-grid">
+                                                ${editAlbumState.backgrounds.map(bg => `
+                                                    <div class="bg-grid-item ${a.background_image === bg.path ? 'selected' : ''}" onclick="selectBackground('${bg.path}','${getImageUrl(bg.url || bg.path)}')">
+                                                        <img src="${getImageUrl(bg.url || bg.path)}" alt="${escapeHtml(bg.name)}" onerror="this.parentElement.style.display='none'">
+                                                        <div class="bg-check">&#10004;</div>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    ${id ? `
+                    <div class="card" style="margin-bottom:24px">
+                        <div class="card-header">
+                            <h2>画册页面 (${editAlbumState.pages.length})</h2>
+                            <div>
+                                ${createUploadArea('pages')}
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="pages-grid" id="pages-grid">
+                                ${editAlbumState.pages.length === 0 ? renderEmpty('暂无页面，请上传图片添加页面') : ''}
+                                ${editAlbumState.pages.map((p, i) => `
+                                    <div class="page-card" data-id="${p.id}">
+                                        <div class="page-card-image">
+                                            <img src="${getImageUrl(p.image_url || p.image)}" alt="第${i + 1}页" onerror="this.src='${getPlaceholderImage()}'">
+                                            <span class="page-card-number">第${p.page_number}页</span>
+                                        </div>
+                                        <div class="page-card-actions">
+                                            <button class="btn btn-sm btn-danger" onclick="deleteAlbumPage(${id},${p.id})">&#128465; 删除</button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+
+                <div id="tab-heatmap" style="${editAlbumState.activeTab === 'heatmap' ? '' : 'display:none'}">
+                    ${renderHeatmapTab(id)}
+                </div>
             </div>
 
             <div>
@@ -273,6 +301,207 @@ function renderAlbumEditForm(id) {
             </div>
         </div>
     `;
+}
+
+function switchEditTab(tabKey, albumId) {
+    editAlbumState.activeTab = tabKey;
+
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.textContent.includes(tabKey === 'basic' ? '基本信息' : '阅读热力图')) {
+            btn.classList.add('active');
+        }
+    });
+
+    document.getElementById('tab-basic').style.display = tabKey === 'basic' ? '' : 'none';
+    document.getElementById('tab-heatmap').style.display = tabKey === 'heatmap' ? '' : 'none';
+
+    if (tabKey === 'heatmap') {
+        loadHeatmapData(albumId);
+    }
+}
+
+function renderHeatmapTab(albumId) {
+    if (!editAlbumState.heatmapData && !editAlbumState.heatmapLoading) {
+        setTimeout(() => loadHeatmapData(albumId), 50);
+    }
+
+    if (editAlbumState.heatmapLoading) {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>&#128293; 阅读热力图</h2>
+                </div>
+                <div class="card-body">
+                    ${renderLoading()}
+                </div>
+            </div>
+        `;
+    }
+
+    const data = editAlbumState.heatmapData;
+    if (!data) {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>&#128293; 阅读热力图</h2>
+                </div>
+                <div class="card-body">
+                    ${renderEmpty('数据加载失败')}
+                </div>
+            </div>
+        `;
+    }
+
+    const stats = data.stats || [];
+    const totalPages = data.total_pages || 0;
+    const pages = editAlbumState.pages || [];
+
+    if (totalPages === 0 || pages.length === 0) {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>&#128293; 阅读热力图</h2>
+                </div>
+                <div class="card-body">
+                    ${renderEmpty('该画册暂无页面，无法展示阅读热力图')}
+                </div>
+            </div>
+        `;
+    }
+
+    if (stats.length === 0 || stats.every(s => s.total_seconds === 0)) {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>&#128293; 阅读热力图</h2>
+                </div>
+                <div class="card-body">
+                    ${renderEmpty('暂无阅读数据，等待用户阅读后将展示热力图')}
+                </div>
+            </div>
+        `;
+    }
+
+    const avgTotal = data.avg_total_seconds || 0;
+    const bouncePage = data.bounce_page;
+    const maxPage = data.max_seconds_page;
+
+    const formatDuration = (seconds) => {
+        if (seconds < 60) return `${seconds.toFixed(1)}秒`;
+        const mins = Math.floor(seconds / 60);
+        const secs = (seconds % 60).toFixed(0);
+        return `${mins}分${secs}秒`;
+    };
+
+    const heatLegend = [
+        { level: 0, label: '无数据', color: 'rgba(229, 231, 235, 0.6)' },
+        { level: 1, label: '较低', color: 'rgba(34, 197, 94, 0.7)' },
+        { level: 2, label: '中等', color: 'rgba(234, 179, 8, 0.7)' },
+        { level: 3, label: '较高', color: 'rgba(249, 115, 22, 0.75)' },
+        { level: 4, label: '最热', color: 'rgba(239, 68, 68, 0.8)' },
+    ];
+
+    return `
+        <div class="card" style="margin-bottom:24px">
+            <div class="card-header">
+                <h2>&#128293; 阅读热力图</h2>
+                <div style="font-size:13px;color:var(--gray-500)">
+                    ${data.heat_algorithm_note || ''}
+                </div>
+            </div>
+            <div class="card-body">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px">
+                    <div style="padding:16px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:12px;color:#fff">
+                        <div style="font-size:13px;opacity:0.9;margin-bottom:4px">平均每页停留</div>
+                        <div style="font-size:24px;font-weight:700">${formatDuration(avgTotal)}</div>
+                    </div>
+                    ${maxPage ? `
+                    <div style="padding:16px;background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);border-radius:12px;color:#fff">
+                        <div style="font-size:13px;opacity:0.9;margin-bottom:4px">最受欢迎页</div>
+                        <div style="font-size:24px;font-weight:700">第${maxPage.page_number}页</div>
+                        <div style="font-size:12px;opacity:0.9;margin-top:4px">平均 ${formatDuration(maxPage.avg_seconds)}</div>
+                    </div>
+                    ` : ''}
+                    ${bouncePage ? `
+                    <div style="padding:16px;background:linear-gradient(135deg,#4facfe 0%,#00f2fe 100%);border-radius:12px;color:#fff">
+                        <div style="font-size:13px;opacity:0.9;margin-bottom:4px">跳出页（停留最短）</div>
+                        <div style="font-size:24px;font-weight:700">第${bouncePage.page_number}页</div>
+                        <div style="font-size:12px;opacity:0.9;margin-top:4px">平均 ${formatDuration(bouncePage.avg_seconds)}</div>
+                    </div>
+                    ` : ''}
+                </div>
+
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+                    <span style="font-size:13px;color:var(--gray-600)">热度等级：</span>
+                    ${heatLegend.map(h => `
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <div style="width:20px;height:20px;border-radius:4px;background:${h.color};border:1px solid rgba(0,0,0,0.1)"></div>
+                            <span style="font-size:12px;color:var(--gray-600)">${h.label}</span>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div class="pages-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+                    ${stats.map(stat => {
+                        const page = pages.find(p => p.page_number === stat.page_number);
+                        const imgSrc = page ? getImageUrl(page.image_url || page.image) : getPlaceholderImage();
+                        const isBounce = bouncePage && stat.page_number === bouncePage.page_number;
+                        const isMax = maxPage && stat.page_number === maxPage.page_number;
+
+                        return `
+                            <div class="heatmap-page-card">
+                                <div class="heatmap-page-image">
+                                    <img src="${imgSrc}" alt="第${stat.page_number}页" onerror="this.src='${getPlaceholderImage()}'">
+                                    <div class="heatmap-overlay" style="background:${stat.heat_color}"></div>
+                                    <span class="heatmap-page-number">第${stat.page_number}页</span>
+                                    ${isBounce ? '<span class="heatmap-tag bounce-tag">&#8598; 跳出</span>' : ''}
+                                    ${isMax ? '<span class="heatmap-tag hot-tag">&#128293; 最热</span>' : ''}
+                                </div>
+                                <div class="heatmap-page-info">
+                                    <div class="heatmap-stat-row">
+                                        <span class="heatmap-stat-label">平均停留</span>
+                                        <span class="heatmap-stat-value">${formatDuration(stat.avg_seconds)}</span>
+                                    </div>
+                                    <div class="heatmap-stat-row">
+                                        <span class="heatmap-stat-label">累计时长</span>
+                                        <span class="heatmap-stat-value">${formatDuration(stat.total_seconds)}</span>
+                                    </div>
+                                    <div class="heatmap-stat-row">
+                                        <span class="heatmap-stat-label">进入次数</span>
+                                        <span class="heatmap-stat-value">${stat.entry_count}次</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function loadHeatmapData(albumId) {
+    if (!albumId) return;
+
+    editAlbumState.heatmapLoading = true;
+    const heatmapTab = document.getElementById('tab-heatmap');
+    if (heatmapTab) {
+        heatmapTab.innerHTML = renderHeatmapTab(albumId);
+    }
+
+    try {
+        const res = await api.pageView.getStats(albumId);
+        editAlbumState.heatmapData = res.data;
+    } catch (e) {
+        editAlbumState.heatmapData = null;
+    } finally {
+        editAlbumState.heatmapLoading = false;
+        const tab = document.getElementById('tab-heatmap');
+        if (tab && editAlbumState.activeTab === 'heatmap') {
+            tab.innerHTML = renderHeatmapTab(albumId);
+        }
+    }
 }
 
 window._albumCoverPath = null;

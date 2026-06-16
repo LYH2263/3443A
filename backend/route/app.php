@@ -70,6 +70,11 @@ Route::group('api/public', function () {
     Route::get('albums/:albumId/favorite-count', 'AlbumFavoriteController@countByAlbum');
 })->prefix('app\\controller\\')->middleware(\app\middleware\CorsMiddleware::class);
 
+// Page view stats report (public, no auth required)
+Route::group('api/page-view', function () {
+    Route::post('report', 'PageViewController@report');
+})->prefix('app\\controller\\')->middleware(\app\middleware\CorsMiddleware::class);
+
 // Upload routes (require login)
 Route::group('api/upload', function () {
     Route::post('image', 'UploadController@image');
@@ -90,6 +95,9 @@ Route::group('api/admin', function () {
     Route::post('albums', 'AlbumController@store');
     Route::put('albums/:id', 'AlbumController@update');
     Route::delete('albums/:id', 'AlbumController@delete');
+
+    // Album page view stats
+    Route::get('albums/:albumId/page-stats', 'PageViewController@getStats')->pattern(['albumId' => '\d+']);
 
     // Album Pages
     Route::get('albums/:albumId/pages', 'AlbumPageController@index');

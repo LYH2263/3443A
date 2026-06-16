@@ -14,7 +14,14 @@ let viewerState = {
     mobilePinchStartScale: 1,
     mobileTouchStartPos: { x: 0, y: 0 },
     magnifierImageLoaded: false,
-    magnifierRafId: null
+    magnifierRafId: null,
+    pageViewTracker: {
+        sessionId: '',
+        currentPageEntryTime: 0,
+        pendingPageData: [],
+        isTracking: false,
+        minStayThreshold: 500,
+    }
 };
 
 const saveProgressDebounced = debounce(async (albumId, page, total) => {
@@ -255,6 +262,8 @@ function showQuotaExhausted(todayCount, dailyQuota) {
 }
 
 async function initViewerPage(id) {
+    cleanupPageViewTracker();
+
     viewerState = {
         album: null, pages: [], currentPage: 1, needPassword: false, flipbookReady: false,
         watermark: null, viewerInfo: null, sidebarOpen: window.innerWidth > 768,
@@ -270,7 +279,14 @@ async function initViewerPage(id) {
         mobilePinchStartScale: 1,
         mobileTouchStartPos: { x: 0, y: 0 },
         magnifierImageLoaded: false,
-        magnifierRafId: null
+        magnifierRafId: null,
+        pageViewTracker: {
+            sessionId: '',
+            currentPageEntryTime: 0,
+            pendingPageData: [],
+            isTracking: false,
+            minStayThreshold: 500,
+        }
     };
     try {
         const res = await api.public.albumDetail(id, undefined, { suppressToast: true });
@@ -772,6 +788,116 @@ function redrawAllWatermarks() {
     });
 }
 
+function generatePageViewSessionId() {
+    return 'pv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+function initPageViewTracker() {
+    const tracker = viewerState.pageViewTracker;
+    tracker.sessionId = generatePageViewSessionId();
+    tracker.pendingPageData = [];
+    tracker.isTracking = true;
+    tracker.currentPageEntryTime = 0;
+
+    window.addEventListener('beforeunload', handlePageViewBeforeUnload);
+    window.addEventListener('pagehide', handlePageViewBeforeUnload);
+    document.addEventListener('visibilitychange', handlePageViewVisibilityChange);
+}
+
+function cleanupPageViewTracker() {
+    const tracker = viewerState.pageViewTracker;
+    if (!tracker.isTracking) return;
+
+    recordCurrentPageExit();
+    reportPageViewData();
+
+    tracker.isTracking = false;
+    tracker.currentPageEntryTime = 0;
+
+    window.removeEventListener('beforeunload', handlePageViewBeforeUnload);
+    window.removeEventListener('pagehide', handlePageViewBeforeUnload);
+    document.removeEventListener('visibilitychange', handlePageViewVisibilityChange);
+}
+
+function handlePageViewBeforeUnload() {
+    const tracker = viewerState.pageViewTracker;
+    if (!tracker.isTracking) return;
+
+    recordCurrentPageExit();
+    reportPageViewData();
+}
+
+function handlePageViewVisibilityChange() {
+    const tracker = viewerState.pageViewTracker;
+    if (!tracker.isTracking) return;
+
+    if (document.visibilityState === 'hidden') {
+        recordCurrentPageExit();
+        reportPageViewData();
+    } else if (document.visibilityState === 'visible' && viewerState.flipbookReady) {
+        tracker.currentPageEntryTime = Date.now();
+    }
+}
+
+function recordPageEntry(pageNumber) {
+    const tracker = viewerState.pageViewTracker;
+    if (!tracker.isTracking) return;
+
+    tracker.currentPageEntryTime = Date.now();
+}
+
+function recordCurrentPageExit() {
+    const tracker = viewerState.pageViewTracker;
+    if (!tracker.isTracking || tracker.currentPageEntryTime === 0) return;
+
+    const now = Date.now();
+    const durationMs = now - tracker.currentPageEntryTime;
+    const currentPage = viewerState.currentPage;
+
+    if (currentPage > 0 && durationMs > 0) {
+        addPageViewData(currentPage, durationMs);
+    }
+
+    tracker.currentPageEntryTime = 0;
+}
+
+function addPageViewData(pageNumber, durationMs) {
+    const tracker = viewerState.pageViewTracker;
+    const threshold = tracker.minStayThreshold;
+
+    if (durationMs < threshold) {
+        return;
+    }
+
+    const existingIndex = tracker.pendingPageData.findIndex(d => d.page_number === pageNumber);
+    if (existingIndex >= 0) {
+        tracker.pendingPageData[existingIndex].duration_ms += durationMs;
+        tracker.pendingPageData[existingIndex].entry_count += 1;
+    } else {
+        tracker.pendingPageData.push({
+            page_number: pageNumber,
+            duration_ms: durationMs,
+            entry_count: 1,
+        });
+    }
+}
+
+function reportPageViewData() {
+    const tracker = viewerState.pageViewTracker;
+    const albumId = viewerState.albumId;
+
+    if (!tracker.isTracking || !albumId || tracker.pendingPageData.length === 0) {
+        return;
+    }
+
+    try {
+        api.pageView.report(albumId, tracker.pendingPageData, tracker.sessionId);
+        tracker.pendingPageData = [];
+    } catch (e) {
+        console.warn('页面浏览数据上报失败', e);
+    }
+}
+
 function initFlipbook() {
     const flipbook = $('#flipbook');
     const container = document.getElementById('viewer-container');
@@ -805,6 +931,8 @@ function initFlipbook() {
                 updatePageIndicator();
                 highlightCurrentThumb();
 
+                recordCurrentPageExit();
+
                 if (viewerState.magnifierEnabled) {
                     hideMagnifier();
                     resetMobileZoom();
@@ -815,6 +943,8 @@ function initFlipbook() {
                 const totalPages = viewerState.pages.length || 1;
                 const normalizedPage = normalizeFlipbookPage(page, totalPages, viewerState.isDoublePageMode);
                 saveProgressDebounced(viewerState.albumId, normalizedPage, totalPages);
+
+                recordPageEntry(page);
 
                 updatePageIndicator();
                 highlightCurrentThumb();
@@ -833,6 +963,9 @@ function initFlipbook() {
     updatePageIndicator();
     highlightCurrentThumb();
     updateBookmarkButton();
+
+    initPageViewTracker();
+    recordPageEntry(startPage);
 
     if (shouldShowRestoreToast) {
         setTimeout(() => {
@@ -1347,4 +1480,5 @@ window.addEventListener('hashchange', () => {
         resetMobileZoom();
         setFlipbookDraggable(true);
     }
+    cleanupPageViewTracker();
 });

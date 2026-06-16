@@ -206,5 +206,27 @@ const api = {
             return apiRequest('/upload/image', { method: 'POST', body: formData, headers: {} });
         },
     },
+    pageView: {
+        report: (albumId, pageData, sessionId) => {
+            const data = {
+                album_id: albumId,
+                page_data: pageData,
+                session_id: sessionId,
+            };
+            if (navigator.sendBeacon) {
+                const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+                const token = getToken();
+                const headers = {
+                    'Content-Type': 'application/json',
+                };
+                if (token) {
+                    headers['Authorization'] = `Bearer ${token}`;
+                }
+                return navigator.sendBeacon(`${API_BASE}/page-view/report`, blob);
+            }
+            return apiRequest('/page-view/report', { method: 'POST', body: data });
+        },
+        getStats: (albumId) => apiRequest(`/admin/albums/${albumId}/page-stats`),
+    },
     init: () => apiRequest('/init'),
 };
