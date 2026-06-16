@@ -3,7 +3,7 @@ const routes = {
     '/login': { render: renderLoginPage, auth: false },
     '/register': { render: renderRegisterPage, auth: false },
     '/viewer/:id': { render: renderViewerPage, init: initViewerPage, auth: false },
-    '/profile': { render: renderProfilePage, auth: true },
+    '/profile': { render: renderProfilePage, init: initProfilePage, auth: true },
     '/admin': { render: renderAdminDashboard, init: initAdminDashboard, auth: true, admin: true },
     '/admin/albums': { render: renderAdminAlbums, init: initAdminAlbums, auth: true, admin: true },
     '/admin/albums/create': { render: () => renderAdminAlbumEdit(null), init: () => initAdminAlbumEdit(null), auth: true, admin: true },

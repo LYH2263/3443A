@@ -1,4 +1,18 @@
 let profileTab = 'info';
+let profileQuotaCache = null;
+
+function formatQuotaDisplay(quota) {
+    if (!quota) return '';
+    if (quota.is_unlimited) {
+        return '<span class="badge badge-success" style="font-size:13px;padding:4px 10px">&#9889; 不限量</span>';
+    }
+    const color = quota.today_count >= quota.daily_quota ? 'var(--danger)' : 'var(--primary)';
+    return `
+        <span style="font-size:15px;font-weight:500;color:${color}">
+            今日已读 <strong>${quota.today_count}</strong> / ${quota.daily_quota}
+        </span>
+    `;
+}
 
 function renderProfilePage() {
     const user = getUser();
@@ -8,6 +22,9 @@ function renderProfilePage() {
         ? `<img src="${getImageUrl(user.avatar)}" alt="">`
         : escapeHtml((user.nickname || user.username || 'U').charAt(0).toUpperCase());
 
+    const quota = user.quota || profileQuotaCache;
+    const quotaDisplay = formatQuotaDisplay(quota);
+
     return `
         <div class="profile-page">
             ${renderNavbar('profile')}
@@ -16,7 +33,10 @@ function renderProfilePage() {
                     <div class="profile-header-section">
                         <div class="profile-avatar-large" id="profile-avatar-display">${avatarContent}</div>
                         <h2 id="profile-nickname-display">${escapeHtml(user.nickname || user.username)}</h2>
-                        <p>${escapeHtml(user.member_level ? user.member_level.name : '普通会员')}</p>
+                        <p style="margin-bottom:12px">${escapeHtml(user.member_level ? user.member_level.name : '普通会员')}</p>
+                        <div id="profile-quota-display" style="margin-bottom:8px">
+                            ${quota ? quotaDisplay : '<span style="color:var(--gray-400);font-size:13px">配额加载中...</span>'}
+                        </div>
                     </div>
                     <div class="profile-tabs">
                         <button class="profile-tab ${profileTab === 'info' ? 'active' : ''}" onclick="switchProfileTab('info')">个人信息</button>
@@ -159,6 +179,27 @@ async function handleUpdateProfile(event) {
         btn.disabled = false;
         btn.textContent = '保存修改';
     }
+}
+
+async function initProfilePage() {
+    try {
+        const res = await api.auth.profile();
+        const user = getUser();
+        if (res.data && res.data.quota) {
+            profileQuotaCache = res.data.quota;
+            if (user) {
+                user.quota = res.data.quota;
+                if (res.data.member_level) {
+                    user.member_level = res.data.member_level;
+                }
+                setUser(user);
+            }
+            const el = document.getElementById('profile-quota-display');
+            if (el) {
+                el.innerHTML = formatQuotaDisplay(res.data.quota);
+            }
+        }
+    } catch (e) {}
 }
 
 async function handleChangePassword(event) {

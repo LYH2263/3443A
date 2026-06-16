@@ -91,9 +91,13 @@ async function apiRequest(url, options = {}) {
         const data = await response.json();
 
         if (data.code !== 200) {
-            showToast(data.message || '操作失败', 'error');
+            if (data.code !== 40301 || !options.suppressToast) {
+                showToast(data.message || '操作失败', 'error');
+            }
             const error = new Error(data.message);
             error._isBusinessError = true;
+            error.code = data.code;
+            error.data = data.data || {};
             throw error;
         }
 
@@ -117,13 +121,14 @@ const api = {
     },
     public: {
         albums: (params) => apiRequest('/public/albums?' + new URLSearchParams(params)),
-        albumDetail: (id, password) => {
+        albumDetail: (id, password, options = {}) => {
             let url = `/public/albums/${id}`;
             if (password) url += `?password=${encodeURIComponent(password)}`;
-            return apiRequest(url);
+            return apiRequest(url, { ...options });
         },
         verifyPassword: (id, password) => apiRequest(`/public/albums/${id}/verify`, { method: 'POST', body: { password } }),
         categories: () => apiRequest('/public/categories'),
+        quota: () => apiRequest('/public/quota'),
     },
     admin: {
         dashboard: () => apiRequest('/admin/dashboard'),

@@ -109,6 +109,19 @@ function renderViewerPage(id) {
                                 <button class="btn btn-primary" onclick="verifyAlbumPassword(${id})" style="width:100%">验证密码</button>
                             </div>
                         </div>
+                        <div class="viewer-password" id="viewer-quota-exhausted" style="display:none">
+                            <div class="viewer-password-box">
+                                <div style="font-size:56px;margin-bottom:12px">&#128345;</div>
+                                <h3>今日额度已用尽</h3>
+                                <p id="viewer-quota-info" style="color:var(--gray-500);margin-bottom:8px">您今日已阅读 3/3 本画册</p>
+                                <p style="color:var(--gray-500);margin-bottom:20px">升级会员获取更多阅读额度，或明日再来</p>
+                                <div style="display:flex;flex-direction:column;gap:10px">
+                                    <button class="btn btn-primary" onclick="window.location.hash='#/profile'" style="width:100%">升级会员</button>
+                                    <button class="btn btn-secondary" onclick="window.location.hash='#/'" style="width:100%">返回画册列表</button>
+                                    ${!isLoggedIn() ? '<button class="btn btn-secondary" onclick="window.location.hash=\'#/login\'" style="width:100%">登录解锁更多额度</button>' : ''}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -133,6 +146,14 @@ function renderViewerPage(id) {
     `;
 }
 
+function showQuotaExhausted(todayCount, dailyQuota) {
+    document.getElementById('viewer-loading').style.display = 'none';
+    document.getElementById('viewer-quota-info').textContent =
+        `您今日已阅读 ${todayCount}/${dailyQuota} 本受限画册`;
+    document.getElementById('viewer-quota-exhausted').style.display = 'flex';
+    document.getElementById('viewer-title').textContent = '额度已用尽';
+}
+
 async function initViewerPage(id) {
     viewerState = {
         album: null, pages: [], currentPage: 1, needPassword: false, flipbookReady: false,
@@ -140,7 +161,7 @@ async function initViewerPage(id) {
         bookmarks: new Set(), focusedThumbIndex: -1, albumId: id
     };
     try {
-        const res = await api.public.albumDetail(id);
+        const res = await api.public.albumDetail(id, undefined, { suppressToast: true });
         if (res.data.need_password) {
             viewerState.needPassword = true;
             viewerState.album = res.data.album;
@@ -151,7 +172,12 @@ async function initViewerPage(id) {
         }
         setupViewer(res.data);
     } catch (e) {
-        document.getElementById('viewer-loading').innerHTML = renderEmpty('画册加载失败');
+        if (e.code === 40301) {
+            const info = e.data || {};
+            showQuotaExhausted(info.today_count || 0, info.daily_quota || 0);
+        } else {
+            document.getElementById('viewer-loading').innerHTML = renderEmpty('画册加载失败');
+        }
     }
 }
 
@@ -162,14 +188,20 @@ async function verifyAlbumPassword(id) {
         return;
     }
     try {
-        const res = await api.public.albumDetail(id, pwd);
+        const res = await api.public.albumDetail(id, pwd, { suppressToast: true });
         if (res.data.need_password) {
             showToast('密码不正确', 'error');
             return;
         }
         document.getElementById('viewer-password').style.display = 'none';
         setupViewer(res.data);
-    } catch (e) {}
+    } catch (e) {
+        if (e.code === 40301) {
+            const info = e.data || {};
+            document.getElementById('viewer-password').style.display = 'none';
+            showQuotaExhausted(info.today_count || 0, info.daily_quota || 0);
+        }
+    }
 }
 
 function setupViewer(data) {
@@ -177,6 +209,12 @@ function setupViewer(data) {
     viewerState.pages = data.pages || [];
     viewerState.watermark = data.album.watermark || null;
     viewerState.viewerInfo = data.viewer || null;
+
+    const user = getUser();
+    if (user && data.quota) {
+        user.quota = data.quota;
+        setUser(user);
+    }
 
     document.getElementById('viewer-title').textContent = data.album.title || '画册';
     document.getElementById('viewer-loading').style.display = 'none';

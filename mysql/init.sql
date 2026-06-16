@@ -9,10 +9,26 @@ CREATE TABLE IF NOT EXISTS `member_levels` (
   `name` VARCHAR(50) NOT NULL COMMENT '等级名称',
   `level` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '等级值，数值越大权限越高',
   `description` VARCHAR(255) DEFAULT '' COMMENT '等级描述',
+  `daily_quota` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '每日可阅读画册数，0表示不限',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY `uk_level` (`level`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会员等级表';
+
+-- 用户日阅读配额记录表
+CREATE TABLE IF NOT EXISTS `user_daily_quotas` (
+  `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT UNSIGNED NOT NULL COMMENT '用户ID，0表示未登录访客',
+  `visitor_key` VARCHAR(64) DEFAULT '' COMMENT '访客唯一标识（IP+UA哈希），仅访客使用',
+  `album_id` INT UNSIGNED NOT NULL COMMENT '画册ID',
+  `read_date` DATE NOT NULL COMMENT '阅读日期',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_user_date_album` (`user_id`, `read_date`, `album_id`),
+  UNIQUE KEY `uk_visitor_date_album` (`visitor_key`, `read_date`, `album_id`),
+  KEY `idx_user_date` (`user_id`, `read_date`),
+  KEY `idx_visitor_date` (`visitor_key`, `read_date`),
+  KEY `idx_date` (`read_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户日阅读配额记录表';
 
 -- 用户表
 CREATE TABLE IF NOT EXISTS `users` (
@@ -126,11 +142,11 @@ CREATE TABLE IF NOT EXISTS `access_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='访问日志表';
 
 -- 初始化会员等级
-INSERT INTO `member_levels` (`id`, `name`, `level`, `description`) VALUES
-(1, '普通会员', 0, '注册即为普通会员，可浏览公开画册'),
-(2, '银牌会员', 1, '银牌会员，可浏览银牌及以下等级画册'),
-(3, '金牌会员', 2, '金牌会员，可浏览金牌及以下等级画册'),
-(4, 'VIP会员', 3, 'VIP会员，可浏览所有画册');
+INSERT INTO `member_levels` (`id`, `name`, `level`, `description`, `daily_quota`) VALUES
+(1, '普通会员', 0, '注册即为普通会员，可浏览公开画册', 3),
+(2, '银牌会员', 1, '银牌会员，可浏览银牌及以下等级画册', 5),
+(3, '金牌会员', 2, '金牌会员，可浏览金牌及以下等级画册', 10),
+(4, 'VIP会员', 3, 'VIP会员，可浏览所有画册', 0);
 
 -- 初始化管理员账户 (密码会在应用启动时通过PHP bcrypt重新生成)
 INSERT INTO `users` (`id`, `username`, `password`, `nickname`, `role`, `member_level_id`, `status`) VALUES

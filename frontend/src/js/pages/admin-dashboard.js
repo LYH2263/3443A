@@ -17,6 +17,40 @@ async function initAdminDashboard() {
         const content = document.getElementById('dashboard-content');
         if (!content) return;
 
+        const quotaUsageList = d.quota_usage || [];
+        const quotaRowsHtml = quotaUsageList.map(q => {
+            const progressColor = q.usage_rate >= 90 ? 'var(--danger)' : q.usage_rate >= 60 ? 'var(--warning)' : 'var(--primary)';
+            const progressWidth = q.is_unlimited ? 0 : Math.min(q.usage_rate, 100);
+            return `
+                <tr>
+                    <td style="font-weight:500">${escapeHtml(q.level_name)}</td>
+                    <td>
+                        ${q.is_unlimited
+                            ? '<span class="badge badge-success">不限</span>'
+                            : `<span class="badge badge-info">${q.daily_quota} 本/天</span>`}
+                    </td>
+                    <td>${q.user_count || 0}</td>
+                    <td>
+                        ${q.is_unlimited
+                            ? `<strong style="color:var(--success)">${q.today_reads || 0}</strong>`
+                            : `<strong style="color:${progressColor}">${q.today_reads || 0}</strong> / ${(q.daily_quota || 0) * (q.user_count || 0)}`}
+                    </td>
+                    <td style="min-width:180px">
+                        ${q.is_unlimited
+                            ? '<div style="color:var(--success);font-size:13px">&#9889; 无限额度</div>'
+                            : `
+                                <div style="display:flex;align-items:center;gap:8px">
+                                    <div style="flex:1;height:8px;background:var(--gray-200);border-radius:4px;overflow:hidden">
+                                        <div style="height:100%;width:${progressWidth}%;background:${progressColor};border-radius:4px;transition:width .3s"></div>
+                                    </div>
+                                    <span style="font-size:12px;color:var(--gray-500);min-width:42px;text-align:right">${q.usage_rate}%</span>
+                                </div>
+                            `}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
         content.innerHTML = `
             <div class="stats-grid">
                 <div class="stat-card">
@@ -60,6 +94,30 @@ async function initAdminDashboard() {
                         <h3>${d.today_views || 0}</h3>
                         <p>今日浏览</p>
                     </div>
+                </div>
+                <div class="stat-card" style="grid-column:span 1">
+                    <div class="stat-icon yellow" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff">&#9203;</div>
+                    <div class="stat-info">
+                        <h3>${d.today_quota_reads || 0}</h3>
+                        <p>今日受限阅读</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom:24px">
+                <div class="card-header">
+                    <h2>&#9203; 各等级配额使用率（今日）</h2>
+                    <a href="#/admin/levels" class="btn btn-sm btn-secondary">等级管理</a>
+                </div>
+                <div class="card-body" style="padding:0">
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>会员等级</th><th>每日配额</th><th>用户数</th><th>今日阅读</th><th>使用率</th></tr>
+                        </thead>
+                        <tbody>
+                            ${quotaRowsHtml || '<tr><td colspan="5" style="text-align:center;color:var(--gray-400)">暂无数据</td></tr>'}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 

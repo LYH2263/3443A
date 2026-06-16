@@ -13,8 +13,9 @@ class MemberLevel extends Model
     protected $updateTime = 'updated_at';
 
     protected $type = [
-        'id'    => 'integer',
-        'level' => 'integer',
+        'id'          => 'integer',
+        'level'       => 'integer',
+        'daily_quota' => 'integer',
     ];
 
     public function users()

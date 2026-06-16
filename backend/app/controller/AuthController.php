@@ -4,6 +4,7 @@ namespace app\controller;
 
 use app\model\User;
 use app\model\MemberLevel;
+use app\model\DailyQuota;
 use think\facade\Log;
 use think\facade\Validate;
 use think\Request;
@@ -42,6 +43,10 @@ class AuthController
         ]);
 
         $level = MemberLevel::find($user->member_level_id);
+        $todayCount = DailyQuota::countToday($user->id, '');
+        $dailyQuota = $level ? (int)$level->daily_quota : 0;
+        $isAdmin = $user->role === 'admin';
+        $isVip = $level && $level->level >= 3;
 
         Log::info("用户登录成功: {$user->username} (ID: {$user->id})");
 
@@ -57,6 +62,11 @@ class AuthController
                 'role'         => $user->role,
                 'member_level' => $level ? $level->toArray() : null,
                 'status'       => $user->status,
+                'quota'        => [
+                    'today_count'  => $todayCount,
+                    'daily_quota'  => $dailyQuota,
+                    'is_unlimited' => $dailyQuota == 0 || $isAdmin || $isVip,
+                ],
             ],
         ], '登录成功');
     }
@@ -125,6 +135,9 @@ class AuthController
         ]);
 
         $level = MemberLevel::find($user->member_level_id);
+        $todayCount = DailyQuota::countToday($user->id, '');
+        $dailyQuota = $level ? (int)$level->daily_quota : 0;
+        $isVip = $level && $level->level >= 3;
 
         Log::info("新用户注册: {$user->username} (ID: {$user->id})");
 
@@ -140,6 +153,11 @@ class AuthController
                 'role'         => $user->role,
                 'member_level' => $level ? $level->toArray() : null,
                 'status'       => $user->status,
+                'quota'        => [
+                    'today_count'  => $todayCount,
+                    'daily_quota'  => $dailyQuota,
+                    'is_unlimited' => $dailyQuota == 0 || $isVip,
+                ],
             ],
         ], '注册成功');
     }
@@ -152,6 +170,10 @@ class AuthController
         }
 
         $level = MemberLevel::find($user->member_level_id);
+        $todayCount = DailyQuota::countToday($user->id, '');
+        $dailyQuota = $level ? (int)$level->daily_quota : 0;
+        $isAdmin = $user->role === 'admin';
+        $isVip = $level && $level->level >= 3;
 
         return json_success([
             'id'           => $user->id,
@@ -164,6 +186,11 @@ class AuthController
             'member_level' => $level ? $level->toArray() : null,
             'status'       => $user->status,
             'created_at'   => $user->created_at,
+            'quota'        => [
+                'today_count'  => $todayCount,
+                'daily_quota'  => $dailyQuota,
+                'is_unlimited' => $dailyQuota == 0 || $isAdmin || $isVip,
+            ],
         ]);
     }
 
@@ -218,6 +245,10 @@ class AuthController
         Log::info("用户更新资料: {$user->username} (ID: {$user->id})");
 
         $level = MemberLevel::find($user->member_level_id);
+        $todayCount = DailyQuota::countToday($user->id, '');
+        $dailyQuota = $level ? (int)$level->daily_quota : 0;
+        $isAdmin = $user->role === 'admin';
+        $isVip = $level && $level->level >= 3;
 
         return json_success([
             'id'           => $user->id,
@@ -228,6 +259,11 @@ class AuthController
             'avatar'       => $user->avatar ? get_upload_url($user->avatar) : '',
             'role'         => $user->role,
             'member_level' => $level ? $level->toArray() : null,
+            'quota'        => [
+                'today_count'  => $todayCount,
+                'daily_quota'  => $dailyQuota,
+                'is_unlimited' => $dailyQuota == 0 || $isAdmin || $isVip,
+            ],
         ], '资料更新成功');
     }
 

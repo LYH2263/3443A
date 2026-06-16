@@ -35,20 +35,22 @@ async function loadAdminLevels() {
         let html = `
             <div class="table-wrapper">
                 <table class="data-table">
-                    <thead><tr><th>等级名称</th><th>等级值</th><th>描述</th><th>用户数</th><th>操作</th></tr></thead>
+                    <thead><tr><th>等级名称</th><th>等级值</th><th>每日配额</th><th>描述</th><th>用户数</th><th>操作</th></tr></thead>
                     <tbody>
         `;
 
         levels.forEach(l => {
+            const quotaText = l.daily_quota > 0 ? `${l.daily_quota} 本/天` : '<span class="badge badge-success">不限</span>';
             html += `
                 <tr>
                     <td style="font-weight:500">${escapeHtml(l.name)}</td>
                     <td><span class="badge badge-primary">Level ${l.level}</span></td>
+                    <td>${quotaText}</td>
                     <td style="color:var(--gray-500);font-size:13px">${escapeHtml(l.description || '-')}</td>
                     <td>${l.user_count || 0}</td>
                     <td>
                         <div class="table-actions">
-                            <button class="btn btn-sm btn-secondary" onclick="showLevelModal(${l.id},'${escapeHtml(l.name)}',${l.level},'${escapeHtml(l.description || '')}')">&#9998;</button>
+                            <button class="btn btn-sm btn-secondary" onclick="showLevelModal(${l.id},'${escapeHtml(l.name)}',${l.level},'${escapeHtml(l.description || '')}',${l.daily_quota ?? 0})">&#9998;</button>
                             <button class="btn btn-sm btn-danger" onclick="deleteLevel(${l.id},'${escapeHtml(l.name)}')">&#128465;</button>
                         </div>
                     </td>
@@ -63,8 +65,9 @@ async function loadAdminLevels() {
     }
 }
 
-function showLevelModal(id, name, level, description) {
+function showLevelModal(id, name, level, description, dailyQuota) {
     const isEdit = !!id;
+    const dailyQuotaVal = isEdit ? (dailyQuota ?? 0) : 0;
     const container = document.getElementById('modal-container');
     container.innerHTML = `
         <div class="modal-overlay" onclick="closeModal(event)">
@@ -81,6 +84,14 @@ function showLevelModal(id, name, level, description) {
                     <div class="form-group">
                         <label class="form-label">等级值 <span class="required">*</span></label>
                         <input type="number" class="form-input" id="ml-level" value="${isEdit ? level : ''}" placeholder="数值越大权限越高" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">每日可阅读画册数</label>
+                        <div style="position:relative">
+                            <input type="number" class="form-input" id="ml-daily-quota" value="${dailyQuotaVal}" placeholder="0 表示不限" min="0" style="padding-right:70px">
+                            <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--gray-400);font-size:13px;pointer-events:none">本/天</span>
+                        </div>
+                        <div style="font-size:12px;color:var(--gray-400);margin-top:4px">0 表示不限制阅读数量，管理员及 VIP 等级始终不限</div>
                     </div>
                     <div class="form-group">
                         <label class="form-label">描述</label>
@@ -100,6 +111,7 @@ async function saveLevel(id) {
     const name = document.getElementById('ml-name').value.trim();
     const level = document.getElementById('ml-level').value;
     const description = document.getElementById('ml-desc').value.trim();
+    const dailyQuota = document.getElementById('ml-daily-quota').value;
     const btn = document.getElementById('ml-save-btn');
 
     if (!name) { showToast('请输入等级名称', 'warning'); return; }
@@ -109,7 +121,7 @@ async function saveLevel(id) {
     btn.textContent = '保存中...';
 
     try {
-        const data = { name, level: parseInt(level), description };
+        const data = { name, level: parseInt(level), description, daily_quota: parseInt(dailyQuota || 0) };
         if (id) {
             await api.admin.updateLevel(id, data);
             showToast('等级更新成功', 'success');

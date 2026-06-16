@@ -25,14 +25,17 @@ class MemberLevelController
         $data = $request->post();
 
         $validate = Validate::rule([
-            'name'  => 'require|length:1,50',
-            'level' => 'require|integer|egt:0',
+            'name'        => 'require|length:1,50',
+            'level'       => 'require|integer|egt:0',
+            'daily_quota' => 'integer|egt:0',
         ])->message([
-            'name.require'  => '等级名称不能为空',
-            'name.length'   => '等级名称长度为1-50个字符',
-            'level.require' => '等级值不能为空',
-            'level.integer' => '等级值必须为整数',
-            'level.egt'     => '等级值不能为负数',
+            'name.require'        => '等级名称不能为空',
+            'name.length'         => '等级名称长度为1-50个字符',
+            'level.require'       => '等级值不能为空',
+            'level.integer'       => '等级值必须为整数',
+            'level.egt'           => '等级值不能为负数',
+            'daily_quota.integer' => '每日配额必须为整数',
+            'daily_quota.egt'     => '每日配额不能为负数',
         ]);
 
         if (!$validate->check($data)) {
@@ -48,9 +51,10 @@ class MemberLevelController
         $level->name = $data['name'];
         $level->level = $data['level'];
         $level->description = $data['description'] ?? '';
+        $level->daily_quota = isset($data['daily_quota']) ? (int)$data['daily_quota'] : 0;
         $level->save();
 
-        Log::info("创建会员等级: {$level->name} (Level: {$level->level})");
+        Log::info("创建会员等级: {$level->name} (Level: {$level->level}, Quota: {$level->daily_quota})");
 
         return json_success($level, '会员等级创建成功');
     }
@@ -83,9 +87,17 @@ class MemberLevelController
             $level->description = $data['description'];
         }
 
+        if (isset($data['daily_quota'])) {
+            $quota = (int)$data['daily_quota'];
+            if ($quota < 0) {
+                return json_error('每日配额不能为负数');
+            }
+            $level->daily_quota = $quota;
+        }
+
         $level->save();
 
-        Log::info("更新会员等级: {$level->name} (ID: {$id})");
+        Log::info("更新会员等级: {$level->name} (ID: {$id}, Quota: {$level->daily_quota})");
 
         return json_success($level, '会员等级更新成功');
     }

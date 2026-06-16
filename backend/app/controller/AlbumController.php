@@ -7,7 +7,9 @@ use app\model\AlbumPage;
 use app\model\AlbumCategory;
 use app\model\AccessLog;
 use app\model\MemberLevel;
+use app\model\DailyQuota;
 use app\model\User;
+use think\facade\Db;
 use think\facade\Log;
 use think\facade\Validate;
 use think\Request;
@@ -139,8 +141,9 @@ class AlbumController
         }
 
         $userLevel = 0;
-        $userId = null;
+        $userId = 0;
         $user = null;
+        $memberLevel = null;
         $token = $request->header('Authorization', '');
         if (str_starts_with($token, 'Bearer ')) {
             $token = substr($token, 7);
@@ -150,8 +153,8 @@ class AlbumController
             if ($payload) {
                 $user = User::find($payload['uid'] ?? 0);
                 if ($user) {
-                    $level = MemberLevel::find($user->member_level_id);
-                    $userLevel = $level ? $level->level : 0;
+                    $memberLevel = MemberLevel::find($user->member_level_id);
+                    $userLevel = $memberLevel ? $memberLevel->level : 0;
                     $userId = $user->id;
                     if ($user->role === 'admin') {
                         $userLevel = 999;
@@ -183,15 +186,58 @@ class AlbumController
             ], '请输入分享密码');
         }
 
+        $ip = $request->ip();
+        $userAgent = $request->header('user-agent', '');
+        $visitorKey = DailyQuota::getVisitorKey($ip, $userAgent);
+        $isRestrictedAlbum = $album->min_level > 0;
+
+        if ($isRestrictedAlbum) {
+            $isAdmin = ($user && $user->role === 'admin');
+            $isVip = ($memberLevel && $memberLevel->level >= 3);
+            $bypassQuota = $isAdmin || $isVip;
+
+            if (!$bypassQuota) {
+                $alreadyRead = DailyQuota::isAlbumReadToday($userId, $id, $visitorKey);
+                if (!$alreadyRead) {
+                    $dailyQuota = 0;
+                    if ($userId > 0 && $memberLevel) {
+                        $dailyQuota = (int)$memberLevel->daily_quota;
+                    } else {
+                        $dailyQuota = 1;
+                    }
+
+                    if ($dailyQuota > 0) {
+                        $todayCount = DailyQuota::countToday($userId, $visitorKey);
+                        if ($todayCount >= $dailyQuota) {
+                            return json_error('今日额度已用尽，升级会员或明日再来', 40301, [
+                                'quota_exhausted' => true,
+                                'today_count'     => $todayCount,
+                                'daily_quota'     => $dailyQuota,
+                                'upgrade_hint'    => true,
+                            ]);
+                        }
+                    }
+                }
+            }
+        }
+
         Album::where('id', $id)->inc('view_count')->update();
 
         AccessLog::create([
             'album_id'   => $id,
-            'user_id'    => $userId,
-            'ip'         => $request->ip(),
-            'user_agent' => $request->header('user-agent', ''),
+            'user_id'    => $userId > 0 ? $userId : null,
+            'ip'         => $ip,
+            'user_agent' => $userAgent,
             'created_at' => date('Y-m-d H:i:s'),
         ]);
+
+        if ($isRestrictedAlbum) {
+            try {
+                DailyQuota::recordRead($userId, $id, $visitorKey);
+            } catch (\Exception $e) {
+                Log::warning("配额记录失败: user_id={$userId}, album_id={$id}, error=" . $e->getMessage());
+            }
+        }
 
         $pages = AlbumPage::where('album_id', $id)
             ->order('page_number', 'asc')
@@ -201,8 +247,23 @@ class AlbumController
                 return $page;
             });
 
-        $ipSuffix = $this->getIpSuffix($request->ip());
-        $viewerName = $userId ? ($user->nickname ?: $user->username) : '';
+        $ipSuffix = $this->getIpSuffix($ip);
+        $viewerName = $userId > 0 ? ($user->nickname ?: $user->username) : '';
+
+        $quotaInfo = null;
+        if ($userId > 0 && $memberLevel) {
+            $quotaInfo = [
+                'today_count' => DailyQuota::countToday($userId, ''),
+                'daily_quota' => (int)$memberLevel->daily_quota,
+                'is_unlimited' => $memberLevel->daily_quota == 0 || ($user && $user->role === 'admin'),
+            ];
+        } elseif ($userId === 0) {
+            $quotaInfo = [
+                'today_count'  => DailyQuota::countToday(0, $visitorKey),
+                'daily_quota'  => 1,
+                'is_unlimited' => false,
+            ];
+        }
 
         return json_success([
             'need_password' => false,
@@ -227,11 +288,60 @@ class AlbumController
             ],
             'viewer' => [
                 'username'  => $viewerName,
-                'is_guest'  => !$userId,
+                'is_guest'  => $userId === 0,
                 'ip_suffix' => $ipSuffix,
                 'date'      => date('Y-m-d'),
             ],
+            'quota' => $quotaInfo,
             'pages' => $pages,
+        ]);
+    }
+
+    public function publicQuota(Request $request)
+    {
+        $userId = 0;
+        $user = null;
+        $memberLevel = null;
+        $token = $request->header('Authorization', '');
+        if (str_starts_with($token, 'Bearer ')) {
+            $token = substr($token, 7);
+        }
+        if (!empty($token)) {
+            $payload = verify_token($token);
+            if ($payload) {
+                $user = User::find($payload['uid'] ?? 0);
+                if ($user) {
+                    $memberLevel = MemberLevel::find($user->member_level_id);
+                    $userId = $user->id;
+                }
+            }
+        }
+
+        $ip = $request->ip();
+        $userAgent = $request->header('user-agent', '');
+        $visitorKey = DailyQuota::getVisitorKey($ip, $userAgent);
+
+        if ($userId > 0 && $memberLevel) {
+            $dailyQuota = (int)$memberLevel->daily_quota;
+            $isAdmin = $user && $user->role === 'admin';
+            $isVip = $memberLevel->level >= 3;
+            return json_success([
+                'user_id'      => $userId,
+                'today_count'  => DailyQuota::countToday($userId, ''),
+                'daily_quota'  => $dailyQuota,
+                'is_unlimited' => $dailyQuota == 0 || $isAdmin || $isVip,
+                'level_name'   => $memberLevel->name,
+                'is_guest'     => false,
+            ]);
+        }
+
+        return json_success([
+            'user_id'      => 0,
+            'today_count'  => DailyQuota::countToday(0, $visitorKey),
+            'daily_quota'  => 1,
+            'is_unlimited' => false,
+            'level_name'   => '访客',
+            'is_guest'     => true,
         ]);
     }
 

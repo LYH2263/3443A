@@ -32,6 +32,7 @@ Route::group('api/public', function () {
     Route::post('albums/:id/verify', 'AlbumController@publicDetail');
     Route::get('albums', 'AlbumController@publicList');
     Route::get('categories', 'AlbumController@categories');
+    Route::get('quota', 'AlbumController@publicQuota');
 })->prefix('app\\controller\\')->middleware(\app\middleware\CorsMiddleware::class);
 
 // Bookmark routes (require login, any user)
