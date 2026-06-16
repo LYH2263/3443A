@@ -1,7 +1,74 @@
 let viewerState = {
     album: null, pages: [], currentPage: 1, needPassword: false, flipbookReady: false,
-    watermark: null, viewerInfo: null
+    watermark: null, viewerInfo: null, sidebarOpen: true, bookmarks: new Set(),
+    focusedThumbIndex: -1, albumId: null
 };
+
+function getBookmarkStorageKey(albumId) {
+    return `flipbook_bookmarks_${albumId}`;
+}
+
+function loadLocalBookmarks(albumId) {
+    try {
+        const raw = localStorage.getItem(getBookmarkStorageKey(albumId));
+        return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+}
+
+function saveLocalBookmarks(albumId, pageNumbers) {
+    localStorage.setItem(getBookmarkStorageKey(albumId), JSON.stringify(pageNumbers));
+}
+
+async function loadBookmarks(albumId) {
+    if (isLoggedIn()) {
+        try {
+            const res = await api.bookmarks.all(albumId);
+            viewerState.bookmarks = new Set(res.data.page_numbers || []);
+        } catch (e) {
+            viewerState.bookmarks = new Set(loadLocalBookmarks(albumId));
+        }
+    } else {
+        viewerState.bookmarks = new Set(loadLocalBookmarks(albumId));
+    }
+    updateSidebarBookmarks();
+}
+
+async function toggleBookmark(pageNumber) {
+    const albumId = viewerState.albumId;
+    if (!albumId) return;
+
+    if (isLoggedIn()) {
+        try {
+            const res = await api.bookmarks.toggle(albumId, pageNumber);
+            if (res.data.bookmarked) {
+                viewerState.bookmarks.add(pageNumber);
+            } else {
+                viewerState.bookmarks.delete(pageNumber);
+            }
+        } catch (e) { return; }
+    } else {
+        if (viewerState.bookmarks.has(pageNumber)) {
+            viewerState.bookmarks.delete(pageNumber);
+        } else {
+            viewerState.bookmarks.add(pageNumber);
+        }
+        saveLocalBookmarks(albumId, Array.from(viewerState.bookmarks));
+    }
+
+    updateSidebarBookmarks();
+    updateBookmarkButton();
+}
+
+function flipbookPageToThumbIndex(page) {
+    if (viewerState.pages.length <= 0) return 0;
+    if (!viewerState.flipbookReady) return page - 1;
+    const displayPage = page;
+    return Math.max(0, Math.min(viewerState.pages.length - 1, displayPage - 1));
+}
+
+function thumbIndexToFlipbookPage(thumbIndex) {
+    return thumbIndex + 1;
+}
 
 function renderViewerPage(id) {
     return `
@@ -9,23 +76,39 @@ function renderViewerPage(id) {
             <div class="viewer-header">
                 <button class="viewer-back" onclick="window.location.hash='#/'">&#8592; 返回画册列表</button>
                 <h2 id="viewer-title">加载中...</h2>
-                <div style="width:80px"></div>
-            </div>
-            <div class="viewer-container" id="viewer-container">
-                <div class="viewer-bg" id="viewer-bg"></div>
-                <div id="flipbook-wrapper">
-                    <div id="viewer-loading">${renderLoading()}</div>
-                    <div id="flipbook" style="display:none"></div>
+                <div class="viewer-header-actions">
+                    <button class="viewer-header-btn" id="btn-toggle-sidebar" onclick="toggleSidebar()" title="缩略图导航">&#9776;</button>
+                    <button class="viewer-header-btn" id="btn-toggle-bookmark" onclick="toggleCurrentPageBookmark()" title="书签">&#9734;</button>
                 </div>
-                <div class="viewer-password" id="viewer-password" style="display:none">
-                    <div class="viewer-password-box">
-                        <h3>&#128274; 需要访问密码</h3>
-                        <p>此画册需要输入分享密码才能查看</p>
-                        <div class="form-group">
-                            <input type="password" class="form-input" id="pwd-input" placeholder="请输入分享密码"
-                                onkeydown="if(event.key==='Enter')verifyAlbumPassword(${id})">
+            </div>
+            <div class="viewer-body">
+                <aside class="viewer-sidebar" id="viewer-sidebar">
+                    <div class="sidebar-bookmarks" id="sidebar-bookmarks" style="display:none">
+                        <div class="sidebar-bookmarks-header">
+                            <span>&#128278; 书签</span>
                         </div>
-                        <button class="btn btn-primary" onclick="verifyAlbumPassword(${id})" style="width:100%">验证密码</button>
+                        <div class="sidebar-bookmarks-list" id="sidebar-bookmarks-list"></div>
+                    </div>
+                    <div class="sidebar-thumbs" id="sidebar-thumbs"></div>
+                </aside>
+                <div class="viewer-main" id="viewer-main">
+                    <div class="viewer-container" id="viewer-container">
+                        <div class="viewer-bg" id="viewer-bg"></div>
+                        <div id="flipbook-wrapper">
+                            <div id="viewer-loading">${renderLoading()}</div>
+                            <div id="flipbook" style="display:none"></div>
+                        </div>
+                        <div class="viewer-password" id="viewer-password" style="display:none">
+                            <div class="viewer-password-box">
+                                <h3>&#128274; 需要访问密码</h3>
+                                <p>此画册需要输入分享密码才能查看</p>
+                                <div class="form-group">
+                                    <input type="password" class="form-input" id="pwd-input" placeholder="请输入分享密码"
+                                        onkeydown="if(event.key==='Enter')verifyAlbumPassword(${id})">
+                                </div>
+                                <button class="btn btn-primary" onclick="verifyAlbumPassword(${id})" style="width:100%">验证密码</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -35,6 +118,17 @@ function renderViewerPage(id) {
                 <button onclick="flipNext()">下一页 &#9654;</button>
                 <button onclick="toggleFullscreen()" style="margin-left:16px" title="全屏">&#9974;</button>
             </div>
+            <div class="viewer-mobile-drawer-overlay" id="mobile-drawer-overlay" onclick="closeMobileDrawer()"></div>
+            <div class="viewer-mobile-drawer" id="mobile-drawer">
+                <div class="mobile-drawer-handle" onclick="closeMobileDrawer()"></div>
+                <div class="mobile-drawer-bookmarks" id="mobile-drawer-bookmarks" style="display:none">
+                    <div class="sidebar-bookmarks-header">
+                        <span>&#128278; 书签</span>
+                    </div>
+                    <div class="sidebar-bookmarks-list" id="mobile-drawer-bookmarks-list"></div>
+                </div>
+                <div class="mobile-drawer-thumbs" id="mobile-drawer-thumbs"></div>
+            </div>
         </div>
     `;
 }
@@ -42,7 +136,8 @@ function renderViewerPage(id) {
 async function initViewerPage(id) {
     viewerState = {
         album: null, pages: [], currentPage: 1, needPassword: false, flipbookReady: false,
-        watermark: null, viewerInfo: null
+        watermark: null, viewerInfo: null, sidebarOpen: window.innerWidth > 768,
+        bookmarks: new Set(), focusedThumbIndex: -1, albumId: id
     };
     try {
         const res = await api.public.albumDetail(id);
@@ -124,9 +219,245 @@ function setupViewer(data) {
 
     document.getElementById('viewer-controls').style.display = 'flex';
 
+    renderSidebarThumbnails();
+    updateSidebarState();
+    loadBookmarks(viewerState.albumId);
+
     setTimeout(() => {
         initFlipbook();
     }, 100);
+}
+
+function renderSidebarThumbnails() {
+    const targets = [
+        { container: document.getElementById('sidebar-thumbs'), prefix: 's' },
+        { container: document.getElementById('mobile-drawer-thumbs'), prefix: 'm' }
+    ];
+
+    targets.forEach(({ container, prefix }) => {
+        if (!container) return;
+
+        let html = '';
+        viewerState.pages.forEach((page, index) => {
+            const pageNum = index + 1;
+            const imgSrc = page.image_url ? getImageUrl(page.image_url) : getPlaceholderImage();
+            html += `
+                <div class="thumb-item" id="${prefix}-thumb-${pageNum}" data-page="${pageNum}" tabindex="-1"
+                     onclick="navigateToThumbPage(${pageNum})"
+                     onkeydown="onThumbKeyDown(event, ${pageNum})"
+                     role="button" aria-label="第${pageNum}页">
+                    <div class="thumb-image-wrap">
+                        <img class="thumb-img" data-src="${imgSrc}" alt="第${pageNum}页" loading="lazy">
+                        <span class="thumb-bookmark-icon" id="${prefix}-thumb-bookmark-${pageNum}" style="display:none">&#9733;</span>
+                    </div>
+                    <span class="thumb-page-number">${pageNum}</span>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+
+        initThumbLazyLoad(container);
+    });
+}
+
+function initThumbLazyLoad(container) {
+    const images = container.querySelectorAll('.thumb-img[data-src]');
+    if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const img = entry.target;
+                    img.src = img.dataset.src;
+                    img.removeAttribute('data-src');
+                    observer.unobserve(img);
+                }
+            });
+        }, { root: container, rootMargin: '100px' });
+        images.forEach(img => observer.observe(img));
+    } else {
+        images.forEach(img => {
+            img.src = img.dataset.src;
+            img.removeAttribute('data-src');
+        });
+    }
+}
+
+function navigateToThumbPage(pageNum) {
+    if (viewerState.flipbookReady) {
+        $('#flipbook').turn('page', pageNum);
+    }
+    if (window.innerWidth <= 768) {
+        closeMobileDrawer();
+    }
+}
+
+function onThumbKeyDown(event, pageNum) {
+    const thumbs = document.querySelectorAll('#sidebar-thumbs .thumb-item, #mobile-drawer-thumbs .thumb-item');
+    if (!thumbs.length) return;
+
+    let idx = -1;
+    thumbs.forEach((t, i) => { if (t.dataset.page == pageNum) idx = i; });
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        const next = Math.min(idx + 1, thumbs.length - 1);
+        thumbs[next].focus();
+        viewerState.focusedThumbIndex = next;
+        thumbs[next].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        const prev = Math.max(idx - 1, 0);
+        thumbs[prev].focus();
+        viewerState.focusedThumbIndex = prev;
+        thumbs[prev].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        navigateToThumbPage(pageNum);
+    }
+}
+
+function toggleSidebar() {
+    if (window.innerWidth <= 768) {
+        openMobileDrawer();
+        return;
+    }
+    viewerState.sidebarOpen = !viewerState.sidebarOpen;
+    updateSidebarState();
+    if (viewerState.flipbookReady) {
+        setTimeout(() => handleViewerResize(), 350);
+    }
+}
+
+function updateSidebarState() {
+    const sidebar = document.getElementById('viewer-sidebar');
+    const main = document.getElementById('viewer-main');
+    const btn = document.getElementById('btn-toggle-sidebar');
+    if (!sidebar || !main) return;
+
+    if (window.innerWidth <= 768) {
+        sidebar.classList.remove('open', 'closed');
+        sidebar.style.display = 'none';
+        main.style.marginLeft = '0';
+        return;
+    }
+
+    if (viewerState.sidebarOpen) {
+        sidebar.classList.add('open');
+        sidebar.classList.remove('closed');
+        sidebar.style.display = '';
+        main.style.marginLeft = '';
+        if (btn) btn.classList.add('active');
+    } else {
+        sidebar.classList.remove('open');
+        sidebar.classList.add('closed');
+        sidebar.style.display = 'none';
+        main.style.marginLeft = '0';
+        if (btn) btn.classList.remove('active');
+    }
+}
+
+function openMobileDrawer() {
+    const drawer = document.getElementById('mobile-drawer');
+    const overlay = document.getElementById('mobile-drawer-overlay');
+    if (drawer) {
+        drawer.classList.add('open');
+        const thumbsContainer = document.getElementById('mobile-drawer-thumbs');
+        if (thumbsContainer && thumbsContainer.children.length === 0) {
+            renderSidebarThumbnails();
+        }
+        updateSidebarBookmarks();
+    }
+    if (overlay) overlay.classList.add('show');
+}
+
+function closeMobileDrawer() {
+    const drawer = document.getElementById('mobile-drawer');
+    const overlay = document.getElementById('mobile-drawer-overlay');
+    if (drawer) drawer.classList.remove('open');
+    if (overlay) overlay.classList.remove('show');
+}
+
+function renderMobileDrawerThumbs() {
+    const container = document.getElementById('mobile-drawer-thumbs');
+    if (!container || container.children.length > 0) return;
+    renderSidebarThumbnails();
+}
+
+function updateSidebarBookmarks() {
+    const sortedBookmarks = Array.from(viewerState.bookmarks).sort((a, b) => a - b);
+
+    const bookmarkTargets = [
+        { containerId: 'sidebar-bookmarks', listId: 'sidebar-bookmarks-list' },
+        { containerId: 'mobile-drawer-bookmarks', listId: 'mobile-drawer-bookmarks-list' }
+    ];
+
+    bookmarkTargets.forEach(({ containerId, listId }) => {
+        const bookmarksContainer = document.getElementById(containerId);
+        const listContainer = document.getElementById(listId);
+
+        if (sortedBookmarks.length > 0) {
+            if (bookmarksContainer) bookmarksContainer.style.display = '';
+            if (listContainer) {
+                listContainer.innerHTML = sortedBookmarks.map(pn => `
+                    <button class="bookmark-chip" onclick="navigateToThumbPage(${pn})" title="跳转到第${pn}页">
+                        &#9733; 第${pn}页
+                    </button>
+                `).join('');
+            }
+        } else {
+            if (bookmarksContainer) bookmarksContainer.style.display = 'none';
+            if (listContainer) listContainer.innerHTML = '';
+        }
+    });
+
+    const prefixes = ['s', 'm'];
+    viewerState.pages.forEach((_, index) => {
+        const pageNum = index + 1;
+        prefixes.forEach(prefix => {
+            const thumbBookmark = document.getElementById(`${prefix}-thumb-bookmark-${pageNum}`);
+            if (thumbBookmark) {
+                thumbBookmark.style.display = viewerState.bookmarks.has(pageNum) ? '' : 'none';
+            }
+        });
+    });
+}
+
+function updateBookmarkButton() {
+    const btn = document.getElementById('btn-toggle-bookmark');
+    if (!btn) return;
+    if (viewerState.bookmarks.has(viewerState.currentPage)) {
+        btn.innerHTML = '&#9733;';
+        btn.classList.add('bookmarked');
+    } else {
+        btn.innerHTML = '&#9734;';
+        btn.classList.remove('bookmarked');
+    }
+}
+
+function toggleCurrentPageBookmark() {
+    toggleBookmark(viewerState.currentPage);
+}
+
+function highlightCurrentThumb() {
+    if (!viewerState.flipbookReady) return;
+    const thumbIndex = flipbookPageToThumbIndex(viewerState.currentPage);
+    const pageNum = thumbIndex + 1;
+
+    document.querySelectorAll('.thumb-item.active').forEach(el => el.classList.remove('active'));
+
+    const desktopThumb = document.getElementById(`s-thumb-${pageNum}`);
+    if (desktopThumb) {
+        desktopThumb.classList.add('active');
+        const sidebar = document.getElementById('viewer-sidebar');
+        if (sidebar && sidebar.style.display !== 'none') {
+            desktopThumb.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }
+
+    const mobileThumb = document.getElementById(`m-thumb-${pageNum}`);
+    if (mobileThumb) {
+        mobileThumb.classList.add('active');
+    }
 }
 
 function resolveWatermarkPlaceholders(text) {
@@ -254,10 +585,13 @@ function initFlipbook() {
             turning: function (event, page, view) {
                 viewerState.currentPage = page;
                 updatePageIndicator();
+                highlightCurrentThumb();
             },
             turned: function (event, page, view) {
                 viewerState.currentPage = page;
                 updatePageIndicator();
+                highlightCurrentThumb();
+                updateBookmarkButton();
                 setTimeout(() => checkAndDrawWatermarks(), 50);
             }
         }
@@ -265,6 +599,8 @@ function initFlipbook() {
 
     viewerState.flipbookReady = true;
     updatePageIndicator();
+    highlightCurrentThumb();
+    updateBookmarkButton();
 
     setTimeout(() => {
         checkAndDrawWatermarks();
@@ -315,20 +651,24 @@ function toggleFullscreen() {
     }
 }
 
-window.addEventListener('resize', debounce(() => {
-    if (viewerState.flipbookReady) {
-        const container = document.getElementById('viewer-container');
-        if (!container) return;
-        const containerWidth = container.clientWidth - 40;
-        let width = Math.min(800, containerWidth);
-        let height = width * 0.625;
-        if (window.innerWidth <= 768) {
-            width = containerWidth;
-            height = width * 0.65;
-        }
-        $('#flipbook').turn('size', width, height);
-        setTimeout(() => redrawAllWatermarks(), 50);
+function handleViewerResize() {
+    if (!viewerState.flipbookReady) return;
+    const container = document.getElementById('viewer-container');
+    if (!container) return;
+    const containerWidth = container.clientWidth - 40;
+    let width = Math.min(800, containerWidth);
+    let height = width * 0.625;
+    if (window.innerWidth <= 768) {
+        width = containerWidth;
+        height = width * 0.65;
     }
+    $('#flipbook').turn('size', width, height);
+    setTimeout(() => redrawAllWatermarks(), 50);
+}
+
+window.addEventListener('resize', debounce(() => {
+    updateSidebarState();
+    handleViewerResize();
 }, 300));
 
 document.addEventListener('fullscreenchange', () => {
@@ -351,5 +691,16 @@ document.addEventListener('fullscreenchange', () => {
             }
             setTimeout(() => redrawAllWatermarks(), 100);
         }, 100);
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    if (!viewerState.flipbookReady) return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    if (e.key === 'ArrowLeft') {
+        flipPrev();
+    } else if (e.key === 'ArrowRight') {
+        flipNext();
     }
 });

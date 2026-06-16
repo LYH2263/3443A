@@ -91,6 +91,18 @@ CREATE TABLE IF NOT EXISTS `album_pages` (
   KEY `idx_page_number` (`album_id`, `page_number`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='画册页面表';
 
+-- 画册书签表
+CREATE TABLE IF NOT EXISTS `album_bookmarks` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT UNSIGNED NOT NULL COMMENT '用户ID',
+  `album_id` INT UNSIGNED NOT NULL COMMENT '画册ID',
+  `page_number` INT UNSIGNED NOT NULL COMMENT '页码',
+  `note` VARCHAR(200) DEFAULT '' COMMENT '书签备注',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_user_album_page` (`user_id`, `album_id`, `page_number`),
+  KEY `idx_user_album` (`user_id`, `album_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='画册书签表';
+
 -- 背景图片库
 CREATE TABLE IF NOT EXISTS `background_images` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

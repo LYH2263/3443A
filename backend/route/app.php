@@ -34,6 +34,15 @@ Route::group('api/public', function () {
     Route::get('categories', 'AlbumController@categories');
 })->prefix('app\\controller\\')->middleware(\app\middleware\CorsMiddleware::class);
 
+// Bookmark routes (require login, any user)
+Route::group('api/bookmarks', function () {
+    Route::get('albums/:albumId', 'BookmarkController@index');
+    Route::get('albums/:albumId/all', 'BookmarkController@allByAlbum');
+    Route::post('albums/:albumId', 'BookmarkController@store');
+    Route::delete('albums/:albumId/:id', 'BookmarkController@delete')->pattern(['id' => '\d+']);
+    Route::post('albums/:albumId/toggle', 'BookmarkController@toggle');
+})->prefix('app\\controller\\')->middleware([\app\middleware\CorsMiddleware::class, \app\middleware\AuthMiddleware::class]);
+
 // Upload routes (require login)
 Route::group('api/upload', function () {
     Route::post('image', 'UploadController@image');

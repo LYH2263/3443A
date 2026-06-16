@@ -159,6 +159,13 @@ const api = {
         addBackground: (data) => apiRequest('/admin/backgrounds', { method: 'POST', body: data }),
         deleteBackground: (id) => apiRequest(`/admin/backgrounds/${id}`, { method: 'DELETE' }),
     },
+    bookmarks: {
+        list: (albumId) => apiRequest(`/bookmarks/albums/${albumId}`),
+        all: (albumId) => apiRequest(`/bookmarks/albums/${albumId}/all`),
+        add: (albumId, pageNumber, note) => apiRequest(`/bookmarks/albums/${albumId}`, { method: 'POST', body: { page_number: pageNumber, note: note || '' } }),
+        remove: (albumId, id) => apiRequest(`/bookmarks/albums/${albumId}/${id}`, { method: 'DELETE' }),
+        toggle: (albumId, pageNumber) => apiRequest(`/bookmarks/albums/${albumId}/toggle`, { method: 'POST', body: { page_number: pageNumber } }),
+    },
     upload: {
         image: async (file, type = 'albums') => {
             const formData = new FormData();
