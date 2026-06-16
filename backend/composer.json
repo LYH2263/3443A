@@ -1,0 +1,37 @@
+{
+    "name": "flipbook/backend",
+    "description": "FlipBook Album Management System - ThinkPHP Backend",
+    "type": "project",
+    "require": {
+        "php": ">=8.0",
+        "topthink/framework": "^6.1",
+        "topthink/think-orm": "^2.0",
+        "topthink/think-view": "^1.0",
+        "topthink/think-multi-app": "^1.0",
+        "topthink/think-filesystem": "^1.0",
+        "endroid/qr-code": "^4.0",
+        "firebase/php-jwt": "^6.0",
+        "intervention/image": "^2.7"
+    },
+    "autoload": {
+        "psr-4": {
+            "app\\": "app/"
+        }
+    },
+    "config": {
+        "preferred-install": "dist",
+        "sort-packages": true,
+        "allow-plugins": {
+            "topthink/think-installer": true
+        },
+        "audit": {
+            "abandoned": "ignore",
+            "block-insecure": false
+        }
+    },
+    "scripts": {
+        "post-autoload-dump": [
+            "@php think service:discover"
+        ]
+    }
+}
