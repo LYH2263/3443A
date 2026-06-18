@@ -103,25 +103,39 @@ function getPlaceholderImage() {
     return `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect fill='%23f3f4f6' width='400' height='300'/%3E%3Ctext fill='%239ca3af' font-family='sans-serif' font-size='18' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3E暂无图片%3C/text%3E%3C/svg%3E`;
 }
 
-const PROGRESS_STORAGE_KEY = 'flipbook_read_progress';
+function getProgressStorageKey(userId = null) {
+    const uid = userId !== null ? userId : getCurrentUserId();
+    return `flipbook_read_progress_${uid}`;
+}
 
-function getAllLocalProgress() {
+function getCurrentUserId() {
+    const user = getUser();
+    return user && user.id ? parseInt(user.id) : 0;
+}
+
+function getAllLocalProgress(userId = null) {
+    const storageKey = getProgressStorageKey(userId);
     try {
-        const raw = localStorage.getItem(PROGRESS_STORAGE_KEY);
-        return raw ? JSON.parse(raw) : {};
+        const raw = localStorage.getItem(storageKey);
+        const result = raw ? JSON.parse(raw) : {};
+        return result;
     } catch (e) {
+        console.warn('Failed to read progress from localStorage:', e);
         return {};
     }
 }
 
-function saveAllLocalProgress(progressMap) {
+function saveAllLocalProgress(progressMap, userId = null) {
+    const storageKey = getProgressStorageKey(userId);
     try {
-        localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progressMap));
-    } catch (e) {}
+        localStorage.setItem(storageKey, JSON.stringify(progressMap));
+    } catch (e) {
+        console.warn('Failed to save progress to localStorage:', e);
+    }
 }
 
-function getLocalProgress(albumId) {
-    const all = getAllLocalProgress();
+function getLocalProgress(albumId, userId = null) {
+    const all = getAllLocalProgress(userId);
     const item = all[albumId];
     if (!item) return null;
 
@@ -141,8 +155,10 @@ function getLocalProgress(albumId) {
     };
 }
 
-function saveLocalProgress(albumId, currentPage, totalPages) {
-    const all = getAllLocalProgress();
+function saveLocalProgress(albumId, currentPage, totalPages, userId = null) {
+    const targetUserId = userId !== null ? userId : getCurrentUserId();
+    const all = getAllLocalProgress(targetUserId);
+
     if (totalPages > 0 && currentPage > totalPages) {
         currentPage = totalPages;
     }
@@ -155,12 +171,20 @@ function saveLocalProgress(albumId, currentPage, totalPages) {
         is_completed: totalPages > 0 && currentPage >= totalPages,
         last_read_at: new Date().toISOString(),
     };
-    saveAllLocalProgress(all);
+    saveAllLocalProgress(all, targetUserId);
+
+    if (targetUserId === 0) {
+        console.debug(`[Progress] Saved to visitor localStorage: album=${albumId}, page=${currentPage}/${totalPages}`);
+    } else {
+        console.debug(`[Progress] Saved to user ${targetUserId} localStorage: album=${albumId}, page=${currentPage}/${totalPages}`);
+    }
+
     return all[albumId];
 }
 
-function correctLocalProgressPage(albumId, actualTotalPages) {
-    const all = getAllLocalProgress();
+function correctLocalProgressPage(albumId, actualTotalPages, userId = null) {
+    const targetUserId = userId !== null ? userId : getCurrentUserId();
+    const all = getAllLocalProgress(targetUserId);
     const item = all[albumId];
     if (!item) return null;
 
@@ -174,20 +198,27 @@ function correctLocalProgressPage(albumId, actualTotalPages) {
     item.total_pages = actualTotalPages;
     item.is_completed = actualTotalPages > 0 && currentPage >= actualTotalPages;
     all[albumId] = item;
-    saveAllLocalProgress(all);
+    saveAllLocalProgress(all, targetUserId);
     return item;
 }
 
-function clearLocalProgress(albumId) {
-    const all = getAllLocalProgress();
+function clearLocalProgress(albumId, userId = null) {
+    const targetUserId = userId !== null ? userId : getCurrentUserId();
+    const all = getAllLocalProgress(targetUserId);
     if (all[albumId]) {
         delete all[albumId];
-        saveAllLocalProgress(all);
+        saveAllLocalProgress(all, targetUserId);
     }
 }
 
-function getUnfinishedLocalProgressList() {
-    const all = getAllLocalProgress();
+function clearAllLocalProgress(userId = null) {
+    const storageKey = getProgressStorageKey(userId);
+    localStorage.removeItem(storageKey);
+}
+
+function getUnfinishedLocalProgressList(userId = null) {
+    const targetUserId = userId !== null ? userId : getCurrentUserId();
+    const all = getAllLocalProgress(targetUserId);
     const list = [];
     for (const albumId in all) {
         const item = all[albumId];
@@ -209,16 +240,54 @@ function getUnfinishedLocalProgressList() {
 }
 
 async function mergeLocalProgressToCloud() {
-    if (!isLoggedIn()) return { merged: 0, updated: 0 };
+    if (!isLoggedIn()) {
+        console.warn('[Progress] Cannot merge: not logged in');
+        return { merged: 0, updated: 0 };
+    }
 
-    const localList = Object.values(getAllLocalProgress());
-    if (localList.length === 0) return { merged: 0, updated: 0 };
+    const currentUserId = getCurrentUserId();
+    const visitorProgress = getAllLocalProgress(0);
+    const localList = Object.values(visitorProgress);
+
+    if (localList.length === 0) {
+        console.debug('[Progress] No visitor progress to merge');
+        return { merged: 0, updated: 0 };
+    }
+
+    console.debug(`[Progress] Merging ${localList.length} visitor progress items to user ${currentUserId}`);
 
     try {
         const res = await api.progress.merge(localList);
+        console.debug('[Progress] Merge result:', res.data);
+
+        const mergedCount = (res.data && res.data.merged) || 0;
+        const updatedCount = (res.data && res.data.updated) || 0;
+        const total = mergedCount + updatedCount;
+
+        if (total > 0) {
+            clearAllLocalProgress(0);
+            console.debug(`[Progress] Cleared visitor localStorage after successful merge`);
+        }
+
         return res.data;
     } catch (e) {
+        console.error('[Progress] Merge failed:', e);
         return { merged: 0, updated: 0 };
+    }
+}
+
+async function saveProgressToCloud(albumId, currentPage, totalPages) {
+    if (!isLoggedIn()) {
+        return { success: false, message: '未登录，未保存到云端' };
+    }
+
+    try {
+        const res = await api.progress.save(albumId, currentPage, totalPages);
+        console.debug(`[Progress] Cloud save success: album=${albumId}, page=${currentPage}/${totalPages}`);
+        return { success: true, data: res.data };
+    } catch (e) {
+        console.error(`[Progress] Cloud save failed: album=${albumId}, page=${currentPage}`, e);
+        return { success: false, error: e };
     }
 }
 
@@ -229,6 +298,40 @@ function normalizeFlipbookPage(page, totalPages, isDoublePageMode) {
     const normalized = Math.ceil(page / 2);
     return Math.max(1, Math.min(totalPages || 1, normalized));
 }
+
+function debugProgressInfo() {
+    const currentUser = getCurrentUserId();
+    console.log('========== Progress Debug Info ==========');
+    console.log('Current User ID:', currentUser);
+    console.log('Is Logged In:', isLoggedIn());
+    console.log('');
+
+    const visitorProgress = getAllLocalProgress(0);
+    console.log('Visitor (user 0) localStorage progress:', Object.keys(visitorProgress).length, 'items');
+    Object.keys(visitorProgress).forEach(albumId => {
+        const p = visitorProgress[albumId];
+        console.log(`  - Album ${albumId}: page ${p.current_page}/${p.total_pages}, completed: ${p.is_completed}`);
+    });
+    console.log('');
+
+    if (currentUser > 0) {
+        const userProgress = getAllLocalProgress(currentUser);
+        console.log(`User ${currentUser} localStorage progress:`, Object.keys(userProgress).length, 'items');
+        Object.keys(userProgress).forEach(albumId => {
+            const p = userProgress[albumId];
+            console.log(`  - Album ${albumId}: page ${p.current_page}/${p.total_pages}, completed: ${p.is_completed}`);
+        });
+    }
+    console.log('==========================================');
+    return {
+        currentUser,
+        isLoggedIn: isLoggedIn(),
+        visitorProgress,
+        userProgress: currentUser > 0 ? getAllLocalProgress(currentUser) : null,
+    };
+}
+
+window.debugProgressInfo = debugProgressInfo;
 
 const WATERMARK_FONT_FAMILY = `-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif`;
 const WATERMARK_ANGLE_DEG = -25;

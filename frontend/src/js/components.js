@@ -72,6 +72,12 @@ document.addEventListener('click', () => {
 });
 
 function logout() {
+    const currentUserId = getCurrentUserId();
+    if (currentUserId > 0) {
+        console.debug(`[Progress] Clearing local progress cache for user ${currentUserId} on logout`);
+        clearAllLocalProgress(currentUserId);
+    }
+
     removeToken();
     showToast('已退出登录', 'success');
     window.location.hash = '#/login';

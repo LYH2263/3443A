@@ -333,16 +333,24 @@ async function loadContinueReadingList() {
     const listEl = document.getElementById('continue-reading-list');
     if (!listEl) return;
 
+    const currentUserId = getCurrentUserId();
+    console.debug(`[Progress] Loading continue reading list for user ${currentUserId}`);
+
     continueReadingLoading = true;
     listEl.innerHTML = renderLoading();
 
     try {
         let list = [];
-        if (isLoggedIn()) {
+        if (currentUserId > 0) {
+            console.debug(`[Progress] Loading unfinished list from cloud for user ${currentUserId}`);
             const res = await api.progress.myUnfinished();
             list = res.data || [];
+            console.debug(`[Progress] Loaded ${list.length} unfinished items from cloud for user ${currentUserId}`);
         } else {
-            const localList = getUnfinishedLocalProgressList();
+            console.debug(`[Progress] Loading unfinished list from visitor localStorage`);
+            const localList = getUnfinishedLocalProgressList(0);
+            console.debug(`[Progress] Found ${localList.length} unfinished items in visitor localStorage`);
+
             const albumIds = localList.map(i => i.album_id);
             if (albumIds.length > 0) {
                 try {
@@ -374,13 +382,17 @@ async function loadContinueReadingList() {
                             }
                         };
                     }).filter(Boolean);
-                } catch (e) {}
+                    console.debug(`[Progress] Compiled ${list.length} visitor unfinished items with album info`);
+                } catch (e) {
+                    console.error('[Progress] Failed to load visitor album info:', e);
+                }
             }
         }
 
         continueReadingList = list;
         renderContinueReadingListItems();
     } catch (e) {
+        console.error('[Progress] Failed to load continue reading list:', e);
         listEl.innerHTML = renderEmpty('加载失败，请稍后重试');
     } finally {
         continueReadingLoading = false;

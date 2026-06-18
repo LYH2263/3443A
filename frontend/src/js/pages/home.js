@@ -82,36 +82,44 @@ async function loadHomeAlbums() {
         }
 
         const albumIds = homeState.albums.map(a => a.id);
+        const currentUserId = getCurrentUserId();
         homeState.progressMap = {};
         homeState.favoriteMap = {};
+
+        console.debug(`[Progress] Loading batch progress for ${albumIds.length} albums, user=${currentUserId}`);
+
         try {
-            if (isLoggedIn()) {
+            if (currentUserId > 0) {
                 const [progressRes, favRes] = await Promise.all([
                     api.progress.batch(albumIds),
                     api.favorites.batchCheck(albumIds)
                 ]);
                 if (progressRes.data) {
                     homeState.progressMap = progressRes.data;
+                    console.debug(`[Progress] Loaded ${Object.keys(progressRes.data).length} progress items from cloud for user ${currentUserId}`);
                 }
                 if (favRes.data && favRes.data.favorites) {
                     homeState.favoriteMap = favRes.data.favorites;
                     Object.assign(favoriteStateMap, favRes.data.favorites);
                 }
             } else {
-                    albumIds.forEach(id => {
-                        const lp = getLocalProgress(id);
-                        if (lp && lp.total_pages > 0 && !lp.is_completed) {
-                            homeState.progressMap[id] = {
-                                album_id: id,
-                                current_page: lp.current_page,
-                                total_pages: lp.total_pages,
-                                progress: Math.min(100, Math.round((lp.current_page / lp.total_pages) * 100)),
-                                is_completed: lp.is_completed,
-                            };
-                        }
-                    });
-                }
-        } catch (e) {}
+                albumIds.forEach(id => {
+                    const lp = getLocalProgress(id, 0);
+                    if (lp && lp.total_pages > 0 && !lp.is_completed) {
+                        homeState.progressMap[id] = {
+                            album_id: id,
+                            current_page: lp.current_page,
+                            total_pages: lp.total_pages,
+                            progress: Math.min(100, Math.round((lp.current_page / lp.total_pages) * 100)),
+                            is_completed: lp.is_completed,
+                        };
+                    }
+                });
+                console.debug(`[Progress] Loaded ${Object.keys(homeState.progressMap).length} progress items from visitor localStorage`);
+            }
+        } catch (e) {
+            console.error('[Progress] Failed to load batch progress:', e);
+        }
 
         let html = '<div class="albums-grid">';
         const quota = getCachedQuota();

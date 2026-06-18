@@ -22,6 +22,7 @@ class ReadingProgressController
 
         $userId = 0;
         $visitorKey = '';
+        $tokenAuthenticated = false;
 
         $token = $request->header('Authorization', '');
         if (str_starts_with($token, 'Bearer ')) {
@@ -29,12 +30,13 @@ class ReadingProgressController
         }
         if (!empty($token)) {
             $payload = verify_token($token);
-            if ($payload) {
-                $userId = $payload['uid'] ?? 0;
+            if ($payload && !empty($payload['uid'])) {
+                $userId = (int)$payload['uid'];
+                $tokenAuthenticated = true;
             }
         }
 
-        if ($userId > 0) {
+        if ($tokenAuthenticated && $userId > 0) {
             $progress = AlbumReadProgress::where('user_id', $userId)
                 ->where('album_id', $albumId)
                 ->find();
@@ -108,7 +110,7 @@ class ReadingProgressController
 
         $userId = 0;
         $visitorKey = '';
-        $user = null;
+        $tokenAuthenticated = false;
 
         $token = $request->header('Authorization', '');
         if (str_starts_with($token, 'Bearer ')) {
@@ -116,9 +118,9 @@ class ReadingProgressController
         }
         if (!empty($token)) {
             $payload = verify_token($token);
-            if ($payload) {
-                $userId = $payload['uid'] ?? 0;
-                $user = User::find($userId);
+            if ($payload && !empty($payload['uid'])) {
+                $userId = (int)$payload['uid'];
+                $tokenAuthenticated = true;
             }
         }
 
@@ -134,7 +136,7 @@ class ReadingProgressController
 
         $isCompleted = ($totalPages > 0 && $currentPage >= $totalPages) ? 1 : 0;
 
-        if ($userId > 0) {
+        if ($tokenAuthenticated && $userId > 0) {
             $progress = AlbumReadProgress::where('user_id', $userId)
                 ->where('album_id', $albumId)
                 ->find();
@@ -144,6 +146,11 @@ class ReadingProgressController
                 $progress->user_id = $userId;
                 $progress->visitor_key = '';
                 $progress->album_id = $albumId;
+            } else {
+                if ((int)$progress->user_id !== $userId) {
+                    return json_error('无权修改此进度', 403);
+                }
+                $progress->visitor_key = '';
             }
         } else {
             $ip = $request->ip();
@@ -159,6 +166,11 @@ class ReadingProgressController
                 $progress->user_id = 0;
                 $progress->visitor_key = $visitorKey;
                 $progress->album_id = $albumId;
+            } else {
+                if ($progress->visitor_key !== $visitorKey) {
+                    return json_error('无权修改此进度', 403);
+                }
+                $progress->user_id = 0;
             }
         }
 
@@ -172,6 +184,8 @@ class ReadingProgressController
             'total_pages'  => $totalPages,
             'is_completed' => (bool)$isCompleted,
             'last_read_at' => $progress->last_read_at,
+            'user_id'      => (int)$progress->user_id,
+            'is_visitor'   => !$tokenAuthenticated,
         ], '进度已保存');
     }
 
@@ -191,6 +205,7 @@ class ReadingProgressController
 
         $userId = 0;
         $visitorKey = '';
+        $tokenAuthenticated = false;
 
         $token = $request->header('Authorization', '');
         if (str_starts_with($token, 'Bearer ')) {
@@ -198,12 +213,13 @@ class ReadingProgressController
         }
         if (!empty($token)) {
             $payload = verify_token($token);
-            if ($payload) {
-                $userId = $payload['uid'] ?? 0;
+            if ($payload && !empty($payload['uid'])) {
+                $userId = (int)$payload['uid'];
+                $tokenAuthenticated = true;
             }
         }
 
-        if ($userId > 0) {
+        if ($tokenAuthenticated && $userId > 0) {
             $list = AlbumReadProgress::where('user_id', $userId)
                 ->whereIn('album_id', $albumIds)
                 ->select();
@@ -248,6 +264,7 @@ class ReadingProgressController
         $user = null;
         $userLevel = 0;
         $isAdmin = false;
+        $tokenAuthenticated = false;
 
         $token = $request->header('Authorization', '');
         if (str_starts_with($token, 'Bearer ')) {
@@ -255,8 +272,9 @@ class ReadingProgressController
         }
         if (!empty($token)) {
             $payload = verify_token($token);
-            if ($payload) {
-                $userId = $payload['uid'] ?? 0;
+            if ($payload && !empty($payload['uid'])) {
+                $userId = (int)$payload['uid'];
+                $tokenAuthenticated = true;
                 $user = User::find($userId);
                 if ($user) {
                     $level = MemberLevel::find($user->member_level_id);
@@ -266,7 +284,7 @@ class ReadingProgressController
             }
         }
 
-        if ($userId > 0) {
+        if ($tokenAuthenticated && $userId > 0) {
             $query = AlbumReadProgress::where('user_id', $userId);
         } else {
             $ip = $request->ip();
@@ -343,19 +361,21 @@ class ReadingProgressController
     public function mergeLocalProgress(Request $request)
     {
         $userId = 0;
+        $tokenAuthenticated = false;
         $token = $request->header('Authorization', '');
         if (str_starts_with($token, 'Bearer ')) {
             $token = substr($token, 7);
         }
         if (!empty($token)) {
             $payload = verify_token($token);
-            if ($payload) {
-                $userId = $payload['uid'] ?? 0;
+            if ($payload && !empty($payload['uid'])) {
+                $userId = (int)$payload['uid'];
+                $tokenAuthenticated = true;
             }
         }
 
-        if ($userId <= 0) {
-            return json_error('请先登录');
+        if (!$tokenAuthenticated || $userId <= 0) {
+            return json_error('请先登录', 401);
         }
 
         $localList = $request->post('progress_list', []);

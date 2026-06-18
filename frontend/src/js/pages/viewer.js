@@ -25,12 +25,26 @@ let viewerState = {
 };
 
 const saveProgressDebounced = debounce(async (albumId, page, total) => {
-    try {
-        if (isLoggedIn()) {
-            await api.progress.save(albumId, page, total);
+    const currentUserId = getCurrentUserId();
+    const normalizedPage = normalizeFlipbookPage(page, total, viewerState.isDoublePageMode);
+
+    if (currentUserId > 0) {
+        console.debug(`[Progress] Saving to cloud: user=${currentUserId}, album=${albumId}, page=${normalizedPage}/${total}`);
+        try {
+            const res = await api.progress.save(albumId, normalizedPage, total);
+            if (res && res.data) {
+                saveLocalProgress(albumId, normalizedPage, total, currentUserId);
+                console.debug(`[Progress] Cloud save success for user ${currentUserId}: album=${albumId}`);
+                return;
+            }
+        } catch (e) {
+            console.error(`[Progress] Cloud save failed for user ${currentUserId}:`, e);
         }
-    } catch (e) {}
-    saveLocalProgress(albumId, page, total);
+        saveLocalProgress(albumId, normalizedPage, total, currentUserId);
+    } else {
+        console.debug(`[Progress] Saving to visitor localStorage: album=${albumId}, page=${normalizedPage}/${total}`);
+        saveLocalProgress(albumId, normalizedPage, total, 0);
+    }
 }, 500);
 
 function showProgressRestoreToast(page) {
@@ -62,23 +76,38 @@ function showProgressRestoreToast(page) {
 }
 
 async function loadProgressForAlbum(albumId, totalPages) {
+    const currentUserId = getCurrentUserId();
     let progress = null;
 
-    try {
-        if (isLoggedIn()) {
+    if (currentUserId > 0) {
+        console.debug(`[Progress] Loading progress from cloud for user ${currentUserId}, album ${albumId}`);
+        try {
             const res = await api.progress.get(albumId);
-            if (res.data && res.data.has_progress) {
+            if (res && res.data && res.data.has_progress) {
                 progress = {
                     current_page: res.data.current_page,
                     total_pages: res.data.actual_total || totalPages,
                     is_completed: res.data.is_completed,
                 };
+                saveLocalProgress(albumId, progress.current_page, progress.total_pages, currentUserId);
+                console.debug(`[Progress] Loaded from cloud for user ${currentUserId}: page ${progress.current_page}/${progress.total_pages}`);
+            } else {
+                console.debug(`[Progress] No cloud progress found for user ${currentUserId}, album ${albumId}`);
+            }
+        } catch (e) {
+            console.error(`[Progress] Failed to load cloud progress for user ${currentUserId}:`, e);
+            const localProgress = getLocalProgress(albumId, currentUserId);
+            if (localProgress) {
+                console.debug(`[Progress] Fallback to user's local cache: page ${localProgress.current_page}`);
+                progress = localProgress;
             }
         }
-    } catch (e) {}
-
-    if (!progress) {
-        progress = getLocalProgress(albumId);
+    } else {
+        console.debug(`[Progress] Loading progress from visitor localStorage, album ${albumId}`);
+        progress = getLocalProgress(albumId, 0);
+        if (progress) {
+            console.debug(`[Progress] Loaded from visitor cache: page ${progress.current_page}/${progress.total_pages}`);
+        }
     }
 
     if (progress && totalPages > 0) {
@@ -88,8 +117,10 @@ async function loadProgressForAlbum(albumId, totalPages) {
         progress.current_page = page;
         progress.total_pages = totalPages;
 
-        if (isLoggedIn()) {
-            correctLocalProgressPage(albumId, totalPages);
+        if (currentUserId > 0) {
+            correctLocalProgressPage(albumId, totalPages, currentUserId);
+        } else {
+            correctLocalProgressPage(albumId, totalPages, 0);
         }
     }
 
