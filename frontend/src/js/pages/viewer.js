@@ -123,6 +123,7 @@ async function loadBookmarks(albumId) {
         viewerState.bookmarks = new Set(loadLocalBookmarks(albumId));
     }
     updateSidebarBookmarks();
+    updateBookmarkButton();
 }
 
 async function toggleBookmark(pageNumber) {
@@ -551,6 +552,11 @@ function openMobileDrawer() {
             renderSidebarThumbnails();
         }
         updateSidebarBookmarks();
+        highlightCurrentThumb();
+        const mobileThumb = document.getElementById(`m-thumb-${viewerState.currentPage}`);
+        if (mobileThumb) {
+            setTimeout(() => mobileThumb.scrollIntoView({ block: 'center', behavior: 'smooth' }), 100);
+        }
     }
     if (overlay) overlay.classList.add('show');
 }
@@ -668,25 +674,46 @@ function toggleCurrentPageBookmark() {
     toggleBookmark(viewerState.currentPage);
 }
 
+function getVisibleSpreadPages() {
+    const currentPage = viewerState.currentPage;
+    if (!viewerState.flipbookReady) return [currentPage];
+
+    let view = [];
+    try {
+        view = $('#flipbook').turn('view') || [];
+    } catch (e) {}
+
+    const visible = view.filter(p => p && p > 0);
+    if (visible.length === 0) return [currentPage];
+
+    if (!visible.includes(currentPage)) {
+        return [currentPage];
+    }
+    return visible;
+}
+
 function highlightCurrentThumb() {
     if (!viewerState.flipbookReady) return;
-    const thumbIndex = flipbookPageToThumbIndex(viewerState.currentPage);
-    const pageNum = thumbIndex + 1;
+
+    const currentPage = viewerState.currentPage;
+    const visiblePages = getVisibleSpreadPages();
 
     document.querySelectorAll('.thumb-item.active').forEach(el => el.classList.remove('active'));
 
-    const desktopThumb = document.getElementById(`s-thumb-${pageNum}`);
-    if (desktopThumb) {
-        desktopThumb.classList.add('active');
+    const prefixes = ['s', 'm'];
+    visiblePages.forEach(pageNum => {
+        prefixes.forEach(prefix => {
+            const thumb = document.getElementById(`${prefix}-thumb-${pageNum}`);
+            if (thumb) thumb.classList.add('active');
+        });
+    });
+
+    const primaryThumb = document.getElementById(`s-thumb-${currentPage}`);
+    if (primaryThumb) {
         const sidebar = document.getElementById('viewer-sidebar');
         if (sidebar && sidebar.style.display !== 'none') {
-            desktopThumb.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            primaryThumb.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
-    }
-
-    const mobileThumb = document.getElementById(`m-thumb-${pageNum}`);
-    if (mobileThumb) {
-        mobileThumb.classList.add('active');
     }
 }
 
