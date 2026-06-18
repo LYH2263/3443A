@@ -371,7 +371,7 @@ function renderAuditDetail(log) {
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:16px;border-bottom:1px dashed var(--gray-200)">
                 <div>
                     <label style="font-size:12px;color:var(--gray-500)">操作人ID</label>
-                    <div style="font-weight:500">${log.operator_id ?: '-'}</div>
+                    <div style="font-weight:500">${log.operator_id ?? '-'}</div>
                 </div>
                 <div>
                     <label style="font-size:12px;color:var(--gray-500)">操作角色</label>

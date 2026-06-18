@@ -145,7 +145,7 @@ Route::group('api/admin', function () {
 
     // Audit Logs
     Route::get('audit-logs', 'AuditLogController@index');
-    Route::get('audit-logs/meta', 'AuditLogController@media');
+    Route::get('audit-logs/meta', 'AuditLogController@meta');
     Route::get('audit-logs/:id', 'AuditLogController@detail')->pattern(['id' => '\d+']);
     Route::post('audit-logs/archive', 'AuditLogController@archive');
 })->prefix('app\\controller\\')->middleware([\app\middleware\CorsMiddleware::class, \app\middleware\AdminMiddleware::class]);
