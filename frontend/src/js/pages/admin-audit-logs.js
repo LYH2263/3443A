@@ -82,7 +82,10 @@ async function loadAuditMeta(force = false) {
         auditState.meta = res.data || {};
         renderAuditStats();
         renderAuditFilterOptions();
-    } catch (e) {}
+    } catch (e) {
+        console.error('[Audit] meta load failed:', e);
+        showToast('审计元数据加载失败：' + (e.message || '未知错误'), 'warning');
+    }
 }
 
 function renderAuditStats() {
@@ -212,7 +215,8 @@ async function loadAuditLogs() {
         const pagEl = document.getElementById('audit-pagination');
         if (pagEl) pagEl.innerHTML = renderPagination(auditState.total, auditState.page, auditState.limit, 'goAuditPage');
     } catch (e) {
-        container.innerHTML = renderEmpty('加载失败');
+        console.error('[Audit] list load failed:', e);
+        container.innerHTML = renderEmpty('加载失败：' + (e.message || '未知错误'));
     }
 }
 
@@ -298,8 +302,19 @@ function getActionBadge(type) {
         rollback: 'badge-warning',
         other:    'badge-outline',
     };
-    const labelMap = auditState.meta?.action_types || {};
-    const label = labelMap[type] || type;
+    const fallbackLabels = {
+        create:   '创建',
+        update:   '更新',
+        delete:   '删除',
+        login:    '登录',
+        logout:   '登出',
+        qrcode:   '生成二维码',
+        snapshot: '快照',
+        rollback: '回滚',
+        other:    '其他',
+    };
+    const labelMap = auditState.meta?.action_types || fallbackLabels;
+    const label = labelMap[type] || fallbackLabels[type] || type;
     const cls = colors[type] || 'badge-outline';
     return `<span class="badge ${cls}" style="font-size:12px">${escapeHtml(label)}</span>`;
 }
@@ -319,7 +334,10 @@ async function toggleAuditDetail(id) {
         auditState.expandedLog = res.data;
         renderAuditTable();
     } catch (e) {
+        console.error('[Audit] detail load failed id=' + id, e);
+        showToast('详情加载失败：' + (e.message || '未知错误'), 'error');
         auditState.expandedId = null;
+        renderAuditTable();
     }
 }
 

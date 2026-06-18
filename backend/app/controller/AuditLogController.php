@@ -41,16 +41,21 @@ class AuditLogController
         }
 
         $total = $query->count();
+        $roleMap = [
+            'admin' => '管理员',
+            'user'  => '用户',
+            'guest' => '访客',
+        ];
         $list = $query
             ->page($page, $limit)
             ->select()
-            ->each(function ($item) {
-                $item->action_type_text = $item->action_type_text_attr;
-                $item->target_type_text = $item->target_type_text_attr;
-                $item->role_text = $this->getRoleText($item->operator_role);
-                unset($item->user_agent);
-                return $item;
-            });
+            ->toArray();
+
+        foreach ($list as &$item) {
+            $item['role_text'] = $roleMap[$item['operator_role'] ?? ''] ?? ($item['operator_role'] ?? '');
+            unset($item['user_agent']);
+        }
+        unset($item);
 
         return json_success([
             'list'  => $list,
@@ -67,9 +72,14 @@ class AuditLogController
             return json_error('日志不存在', 404);
         }
 
-        $log->action_type_text = $log->action_type_text_attr;
-        $log->target_type_text = $log->target_type_text_attr;
-        $log->role_text = $this->getRoleText($log->operator_role);
+        $roleMap = [
+            'admin' => '管理员',
+            'user'  => '用户',
+            'guest' => '访客',
+        ];
+
+        $data = $log->toArray();
+        $data['role_text'] = $roleMap[$log->operator_role] ?? $log->operator_role;
 
         $changeSummary = $log->change_summary;
         $changes = [];
@@ -86,24 +96,29 @@ class AuditLogController
                 ];
             }
         }
-        $log->changes = $changes;
+        $data['changes'] = $changes;
+        unset($data['user_agent']);
 
-        return json_success($log);
+        return json_success($data);
     }
 
     public function meta()
     {
         $operators = User::field('id, username, nickname, role')
-            ->where('role', 'admin')
-            ->whereOr('role', 'user')
+            ->where(function ($q) {
+                $q->where('role', 'admin')
+                  ->whereOr('role', 'user');
+            })
             ->order('role', 'desc')
             ->order('id', 'asc')
             ->limit(100)
             ->select()
-            ->each(function ($item) {
-                $item->display_name = $item->nickname ?: $item->username;
-                return $item;
-            });
+            ->toArray();
+
+        foreach ($operators as &$op) {
+            $op['display_name'] = !empty($op['nickname']) ? $op['nickname'] : $op['username'];
+        }
+        unset($op);
 
         $totalCount = AuditLog::count();
         $todayCount = AuditLog::where('created_at', '>=', date('Y-m-d 00:00:00'))->count();

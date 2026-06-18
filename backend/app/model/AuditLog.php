@@ -20,6 +20,8 @@ class AuditLog extends Model
     protected $json = ['change_summary'];
     protected $jsonAssoc = true;
 
+    protected $append = ['action_type_text', 'target_type_text'];
+
     public static function actionTypes(): array
     {
         return [
