@@ -107,11 +107,11 @@ class PageViewStat extends Model
         $maxSecondsPage = null;
         $bouncePage = null;
 
-        $nonZeroStats = array_filter($allStats, fn($s) => $s['total_seconds'] > 0);
-        if (!empty($nonZeroStats)) {
-            usort($nonZeroStats, fn($a, $b) => $a['total_seconds'] <=> $b['total_seconds']);
-            $minSecondsPage = reset($nonZeroStats);
-            $maxSecondsPage = end($nonZeroStats);
+        $readStats = array_filter($allStats, fn($s) => $s['entry_count'] > 0 && $s['avg_seconds'] > 0);
+        if (!empty($readStats)) {
+            usort($readStats, fn($a, $b) => $a['avg_seconds'] <=> $b['avg_seconds']);
+            $minSecondsPage = reset($readStats);
+            $maxSecondsPage = end($readStats);
             $bouncePage = $minSecondsPage;
         }
 

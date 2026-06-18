@@ -18,6 +18,7 @@ let viewerState = {
     pageViewTracker: {
         sessionId: '',
         currentPageEntryTime: 0,
+        currentPageNumber: 0,
         pendingPageData: [],
         isTracking: false,
         minStayThreshold: 500,
@@ -340,6 +341,7 @@ async function initViewerPage(id) {
         pageViewTracker: {
             sessionId: '',
             currentPageEntryTime: 0,
+            currentPageNumber: 0,
             pendingPageData: [],
             isTracking: false,
             minStayThreshold: 500,
@@ -895,6 +897,7 @@ function initPageViewTracker() {
     tracker.pendingPageData = [];
     tracker.isTracking = true;
     tracker.currentPageEntryTime = 0;
+    tracker.currentPageNumber = 0;
 
     window.addEventListener('beforeunload', handlePageViewBeforeUnload);
     window.addEventListener('pagehide', handlePageViewBeforeUnload);
@@ -910,6 +913,7 @@ function cleanupPageViewTracker() {
 
     tracker.isTracking = false;
     tracker.currentPageEntryTime = 0;
+    tracker.currentPageNumber = 0;
 
     window.removeEventListener('beforeunload', handlePageViewBeforeUnload);
     window.removeEventListener('pagehide', handlePageViewBeforeUnload);
@@ -931,7 +935,7 @@ function handlePageViewVisibilityChange() {
     if (document.visibilityState === 'hidden') {
         recordCurrentPageExit();
         reportPageViewData();
-    } else if (document.visibilityState === 'visible' && viewerState.flipbookReady) {
+    } else if (document.visibilityState === 'visible' && viewerState.flipbookReady && tracker.currentPageNumber > 0) {
         tracker.currentPageEntryTime = Date.now();
     }
 }
@@ -940,19 +944,20 @@ function recordPageEntry(pageNumber) {
     const tracker = viewerState.pageViewTracker;
     if (!tracker.isTracking) return;
 
+    tracker.currentPageNumber = pageNumber;
     tracker.currentPageEntryTime = Date.now();
 }
 
 function recordCurrentPageExit() {
     const tracker = viewerState.pageViewTracker;
-    if (!tracker.isTracking || tracker.currentPageEntryTime === 0) return;
+    if (!tracker.isTracking || tracker.currentPageEntryTime === 0 || tracker.currentPageNumber === 0) return;
 
     const now = Date.now();
     const durationMs = now - tracker.currentPageEntryTime;
-    const currentPage = viewerState.currentPage;
+    const pageNumber = tracker.currentPageNumber;
 
-    if (currentPage > 0 && durationMs > 0) {
-        addPageViewData(currentPage, durationMs);
+    if (pageNumber > 0 && durationMs > 0) {
+        addPageViewData(pageNumber, durationMs);
     }
 
     tracker.currentPageEntryTime = 0;
@@ -1024,11 +1029,11 @@ function initFlipbook() {
         page: startPage,
         when: {
             turning: function (event, page, view) {
+                recordCurrentPageExit();
+
                 viewerState.currentPage = page;
                 updatePageIndicator();
                 highlightCurrentThumb();
-
-                recordCurrentPageExit();
 
                 if (viewerState.magnifierEnabled) {
                     hideMagnifier();

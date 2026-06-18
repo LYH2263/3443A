@@ -86,7 +86,7 @@ function renderAlbumEditForm(id) {
                 ${id ? `
                 <div class="tabs" style="margin-bottom:16px">
                     ${tabs.map(t => `
-                        <button class="tab-btn ${editAlbumState.activeTab === t.key ? 'active' : ''}" onclick="switchEditTab('${t.key}', ${id})">
+                        <button class="tab-btn ${editAlbumState.activeTab === t.key ? 'active' : ''}" data-tab="${t.key}" onclick="switchEditTab('${t.key}', ${id})">
                             ${t.icon} ${t.label}
                         </button>
                     `).join('')}
@@ -307,8 +307,8 @@ function switchEditTab(tabKey, albumId) {
     editAlbumState.activeTab = tabKey;
 
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        if (btn.textContent.includes(tabKey === 'basic' ? '基本信息' : '阅读热力图')) {
+    document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
+        if (btn.dataset.tab === tabKey) {
             btn.classList.add('active');
         }
     });
@@ -316,7 +316,7 @@ function switchEditTab(tabKey, albumId) {
     document.getElementById('tab-basic').style.display = tabKey === 'basic' ? '' : 'none';
     document.getElementById('tab-heatmap').style.display = tabKey === 'heatmap' ? '' : 'none';
 
-    if (tabKey === 'heatmap') {
+    if (tabKey === 'heatmap' && !editAlbumState.heatmapData && !editAlbumState.heatmapLoading) {
         loadHeatmapData(albumId);
     }
 }
@@ -494,11 +494,12 @@ async function loadHeatmapData(albumId) {
         const res = await api.pageView.getStats(albumId);
         editAlbumState.heatmapData = res.data;
     } catch (e) {
+        console.warn('热力图数据加载失败', e);
         editAlbumState.heatmapData = null;
     } finally {
         editAlbumState.heatmapLoading = false;
         const tab = document.getElementById('tab-heatmap');
-        if (tab && editAlbumState.activeTab === 'heatmap') {
+        if (tab) {
             tab.innerHTML = renderHeatmapTab(albumId);
         }
     }

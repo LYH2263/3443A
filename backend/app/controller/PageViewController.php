@@ -12,9 +12,32 @@ class PageViewController
 {
     public function report(Request $request)
     {
-        $albumId = (int)$request->post('album_id', 0);
-        $pageData = $request->post('page_data', []);
-        $sessionId = $request->post('session_id', '');
+        $albumId = 0;
+        $pageData = [];
+        $sessionId = '';
+
+        $contentType = $request->header('content-type', '');
+        if (stripos($contentType, 'application/json') !== false) {
+            $raw = file_get_contents('php://input');
+            if ($raw) {
+                $json = json_decode($raw, true);
+                if (is_array($json)) {
+                    $albumId = (int)($json['album_id'] ?? 0);
+                    $pageData = $json['page_data'] ?? [];
+                    $sessionId = $json['session_id'] ?? '';
+                }
+            }
+        }
+
+        if ($albumId <= 0) {
+            $albumId = (int)$request->post('album_id', 0);
+        }
+        if (empty($pageData)) {
+            $pageData = $request->post('page_data', []);
+        }
+        if ($sessionId === '') {
+            $sessionId = $request->post('session_id', '');
+        }
 
         if ($albumId <= 0 || empty($pageData)) {
             return json_error('参数错误');
