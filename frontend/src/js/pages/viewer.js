@@ -1166,6 +1166,11 @@ window.addEventListener('resize', debounce(() => {
 
 document.addEventListener('fullscreenchange', () => {
     if (viewerState.flipbookReady) {
+        if (viewerState.magnifierEnabled) {
+            hideMagnifier();
+            resetMobileZoom();
+            resetMagnifier();
+        }
         setTimeout(() => {
             const container = document.getElementById('viewer-container');
             if (container) {
@@ -1183,6 +1188,14 @@ document.addEventListener('fullscreenchange', () => {
                 $('#flipbook').turn('size', width, height);
             }
             setTimeout(() => redrawAllWatermarks(), 100);
+            if (viewerState.magnifierEnabled) {
+                const pages = document.querySelectorAll('#flipbook .page img');
+                pages.forEach(img => {
+                    if (img.dataset.compositeUrl) {
+                        delete img.dataset.compositeUrl;
+                    }
+                });
+            }
         }, 100);
     }
 });
@@ -1301,6 +1314,19 @@ function handleMagnifierMouseLeave() {
     hideMagnifier();
 }
 
+function getVisiblePageNums() {
+    if (!viewerState.flipbookReady) return [viewerState.currentPage];
+    try {
+        const view = $('#flipbook').turn('view');
+        if (Array.isArray(view)) {
+            return view.filter(p => p && p > 0);
+        }
+        return [viewerState.currentPage];
+    } catch (e) {
+        return [viewerState.currentPage];
+    }
+}
+
 function getCurrentPageImage(e) {
     const flipbook = document.getElementById('flipbook');
     if (!flipbook) return null;
@@ -1336,12 +1362,31 @@ function getCurrentPageImage(e) {
         }
     }
 
-    const currentPage = viewerState.currentPage;
+    const visiblePageNums = getVisiblePageNums();
     const pages = flipbook.querySelectorAll('.page');
     for (let i = 0; i < pages.length; i++) {
         const pageNum = i + 1;
-        if (pageNum === currentPage || (viewerState.isDoublePageMode && 
-            (pageNum === currentPage || pageNum === currentPage + 1))) {
+        if (visiblePageNums.includes(pageNum)) {
+            const img = pages[i].querySelector('img');
+            if (img && img.complete && img.naturalWidth > 0) {
+                if (e) {
+                    const imgRect = img.getBoundingClientRect();
+                    let clientX = e.clientX;
+                    let clientY = e.clientY;
+                    if (clientX >= imgRect.left && clientX <= imgRect.right &&
+                        clientY >= imgRect.top && clientY <= imgRect.bottom) {
+                        return img;
+                    }
+                } else {
+                    return img;
+                }
+            }
+        }
+    }
+
+    for (let i = 0; i < pages.length; i++) {
+        const pageNum = i + 1;
+        if (visiblePageNums.includes(pageNum)) {
             const img = pages[i].querySelector('img');
             if (img && img.complete && img.naturalWidth > 0) {
                 return img;
@@ -1360,16 +1405,53 @@ function getMousePositionInImage(e, img) {
     x = Math.max(0, Math.min(imgRect.width, x));
     y = Math.max(0, Math.min(imgRect.height, y));
 
-    const percentX = x / imgRect.width;
-    const percentY = y / imgRect.height;
+    const scaleX = img.naturalWidth / imgRect.width;
+    const scaleY = img.naturalHeight / imgRect.height;
 
     return {
-        x: x,
-        y: y,
-        percentX: percentX,
-        percentY: percentY,
-        imgRect: imgRect
+        displayX: x,
+        displayY: y,
+        naturalX: x * scaleX,
+        naturalY: y * scaleY,
+        imgRect: imgRect,
+        scaleX: scaleX,
+        scaleY: scaleY
     };
+}
+
+function drawWatermarkPatternGlobal(ctx, text, color, opacity, density, width, height) {
+    ctx.save();
+
+    const fontSize = Math.max(16, Math.min(24, width / 40));
+    const angle = -25 * Math.PI / 180;
+    const baseSpacingX = 260 / density;
+    const baseSpacingY = 140 / density;
+    const scaleFactor = width / 800;
+    const spacingX = baseSpacingX * Math.max(0.6, Math.min(1.5, scaleFactor));
+    const spacingY = baseSpacingY * Math.max(0.6, Math.min(1.5, scaleFactor));
+
+    ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif`;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = opacity;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const diagonal = Math.sqrt(width * width + height * height);
+    const startX = -diagonal / 2;
+    const endX = diagonal / 2 + spacingX;
+    const startY = -diagonal / 2;
+    const endY = diagonal / 2 + spacingY;
+
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate(angle);
+
+    for (let yy = startY; yy < endY; yy += spacingY) {
+        for (let xx = startX; xx < endX; xx += spacingX) {
+            ctx.fillText(text, xx, yy);
+        }
+    }
+
+    ctx.restore();
 }
 
 function getWatermarkedCompositeUrl(img) {
@@ -1416,40 +1498,70 @@ function updateMagnifier(e, img) {
     const lensInner = document.getElementById('magnifier-lens-inner');
     if (!lens || !lensInner || !img) return;
 
+    const container = document.getElementById('viewer-container');
+    const containerRect = container.getBoundingClientRect();
     const pos = getMousePositionInImage(e, img);
-    const containerRect = document.getElementById('viewer-container').getBoundingClientRect();
 
     const lensSize = viewerState.magnifierSize;
+    const lensHalf = lensSize / 2;
     const zoom = viewerState.magnifierZoom;
 
-    let lensX = e.clientX - containerRect.left - lensSize / 2;
-    let lensY = e.clientY - containerRect.top - lensSize / 2;
+    const imgRect = pos.imgRect;
+    const imgLeftInContainer = imgRect.left - containerRect.left;
+    const imgTopInContainer = imgRect.top - containerRect.top;
+    const imgRightInContainer = imgRect.right - containerRect.left;
+    const imgBottomInContainer = imgRect.bottom - containerRect.top;
 
-    const lensHalf = lensSize / 2;
-    const minX = pos.imgRect.left - containerRect.left;
-    const maxX = pos.imgRect.right - containerRect.left;
-    const minY = pos.imgRect.top - containerRect.top;
-    const maxY = pos.imgRect.bottom - containerRect.top;
+    let lensCenterX_InContainer = e.clientX - containerRect.left;
+    let lensCenterY_InContainer = e.clientY - containerRect.top;
 
-    lensX = Math.max(minX, Math.min(maxX - lensSize, lensX));
-    lensY = Math.max(minY, Math.min(maxY - lensSize, lensY));
+    const minLensCenterX = imgLeftInContainer + lensHalf;
+    const maxLensCenterX = imgRightInContainer - lensHalf;
+    const minLensCenterY = imgTopInContainer + lensHalf;
+    const maxLensCenterY = imgBottomInContainer - lensHalf;
 
-    const clampX = Math.max(lensHalf / zoom, Math.min(img.naturalWidth - lensHalf / zoom, pos.percentX * img.naturalWidth));
-    const clampY = Math.max(lensHalf / zoom, Math.min(img.naturalHeight - lensHalf / zoom, pos.percentY * img.naturalHeight));
+    let clampedLensCenterX = lensCenterX_InContainer;
+    let clampedLensCenterY = lensCenterY_InContainer;
+    let offsetX = 0;
+    let offsetY = 0;
 
-    const bgPosX = -(clampX * zoom - lensHalf);
-    const bgPosY = -(clampY * zoom - lensHalf);
+    if (minLensCenterX < maxLensCenterX) {
+        clampedLensCenterX = Math.max(minLensCenterX, Math.min(maxLensCenterX, lensCenterX_InContainer));
+    } else {
+        clampedLensCenterX = (imgLeftInContainer + imgRightInContainer) / 2;
+    }
+    if (minLensCenterY < maxLensCenterY) {
+        clampedLensCenterY = Math.max(minLensCenterY, Math.min(maxLensCenterY, lensCenterY_InContainer));
+    } else {
+        clampedLensCenterY = (imgTopInContainer + imgBottomInContainer) / 2;
+    }
+
+    offsetX = lensCenterX_InContainer - clampedLensCenterX;
+    offsetY = lensCenterY_InContainer - clampedLensCenterY;
+
+    const lensX = clampedLensCenterX - lensHalf;
+    const lensY = clampedLensCenterY - lensHalf;
+
+    const sampleNaturalX = pos.naturalX;
+    const sampleNaturalY = pos.naturalY;
+
+    const sampleInScaledX = sampleNaturalX * zoom;
+    const sampleInScaledY = sampleNaturalY * zoom;
+
+    const bgPosX = lensHalf - sampleInScaledX + offsetX * zoom;
+    const bgPosY = lensHalf - sampleInScaledY + offsetY * zoom;
 
     const compositeUrl = getWatermarkedCompositeUrl(img);
 
     lensInner.style.backgroundImage = `url(${compositeUrl})`;
     lensInner.style.backgroundSize = `${img.naturalWidth * zoom}px ${img.naturalHeight * zoom}px`;
     lensInner.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
+    lensInner.style.backgroundRepeat = 'no-repeat';
 
-    lens.style.left = `${lensX}px`;
-    lens.style.top = `${lensY}px`;
     lens.style.width = `${lensSize}px`;
     lens.style.height = `${lensSize}px`;
+    lens.style.left = `${lensX}px`;
+    lens.style.top = `${lensY}px`;
 }
 
 function showMagnifier() {
