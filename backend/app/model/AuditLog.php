@@ -15,7 +15,6 @@ class AuditLog extends Model
     protected $type = [
         'id'             => 'integer',
         'operator_id'    => 'integer',
-        'change_summary' => 'json',
     ];
 
     protected $json = ['change_summary'];
