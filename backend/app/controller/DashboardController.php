@@ -46,19 +46,15 @@ class DashboardController
         $quotaStats = DailyQuota::levelQuotaUsageStats();
         $quotaUsage = [];
         foreach ($quotaStats as $s) {
-            $dailyQuota = (int)($s['daily_quota'] ?? 0);
-            $userCountL = (int)($s['user_count'] ?? 0);
-            $todayReads = (int)($s['today_reads'] ?? 0);
-            $expectedTotal = $dailyQuota > 0 && $userCountL > 0 ? $dailyQuota * $userCountL : 0;
-            $usageRate = $expectedTotal > 0 ? round(($todayReads / $expectedTotal) * 100, 2) : 0;
             $quotaUsage[] = [
-                'level_id'     => (int)$s['level_id'],
-                'level_name'   => $s['level_name'],
-                'daily_quota'  => $dailyQuota,
-                'user_count'   => $userCountL,
-                'today_reads'  => $todayReads,
-                'is_unlimited' => $dailyQuota == 0,
-                'usage_rate'   => $usageRate,
+                'level_id'       => (int)$s['level_id'],
+                'level_name'     => $s['level_name'],
+                'daily_quota'    => (int)($s['daily_quota'] ?? 0),
+                'user_count'     => (int)($s['user_count'] ?? 0),
+                'today_reads'    => (int)($s['today_reads'] ?? 0),
+                'expected_total' => (int)($s['expected_total'] ?? 0),
+                'is_unlimited'   => !empty($s['is_unlimited']),
+                'usage_rate'     => (float)($s['usage_rate'] ?? 0),
             ];
         }
 

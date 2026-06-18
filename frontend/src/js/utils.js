@@ -294,3 +294,102 @@ function setupWatermarkCanvas(canvas, width, height) {
     ctx.clearRect(0, 0, width, height);
     return ctx;
 }
+
+const QUOTA_COLORS = {
+    safe: '#10b981',
+    warn: '#f59e0b',
+    danger: '#ef4444',
+    unlimited: '#6366f1',
+};
+
+function getQuotaColor(usageRate) {
+    if (usageRate >= 90) return QUOTA_COLORS.danger;
+    if (usageRate >= 60) return QUOTA_COLORS.warn;
+    return QUOTA_COLORS.safe;
+}
+
+function renderQuotaBar(quota, options = {}) {
+    if (!quota) return '';
+    const { compact = false, showRemaining = true, showUpgradeHint = true } = options;
+
+    if (quota.is_unlimited) {
+        return `
+            <div class="quota-display ${compact ? 'compact' : ''}">
+                <span class="quota-unlimited-badge">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18.178 8a6 6 0 0 0-10.92-1.829C6.23 7.672 4.478 10.011 2 11.569"/>
+                        <path d="M5.822 16a6 6 0 0 0 10.92 1.829c1.028-1.501 2.78-3.84 5.258-5.398"/>
+                        <path d="m15 5 3 3-3 3"/>
+                        <path d="m9 19-3-3 3-3"/>
+                    </svg>
+                    无限额度
+                </span>
+            </div>
+        `;
+    }
+
+    const today = parseInt(quota.today_count || 0);
+    const total = parseInt(quota.daily_quota || 0);
+    const remaining = Math.max(0, total - today);
+    const usageRate = total > 0 ? Math.min(100, (today / total) * 100) : 0;
+    const color = getQuotaColor(usageRate);
+    const isExhausted = today >= total;
+
+    if (compact) {
+        return `
+            <div class="quota-display compact" style="color:${isExhausted ? QUOTA_COLORS.danger : color}" title="今日配额：${today}/${total}">
+                <span style="margin-right:4px">&#9203;</span>
+                <strong>${today}</strong><span style="opacity:.6">/${total}</span>
+                ${showRemaining && !isExhausted ? `<span style="margin-left:4px;opacity:.7">剩${remaining}</span>` : ''}
+                ${isExhausted ? `<span style="margin-left:4px;font-size:12px">&#9888;</span>` : ''}
+            </div>
+        `;
+    }
+
+    return `
+        <div class="quota-display">
+            <div class="quota-header">
+                <span class="quota-title">&#9203; 今日阅读配额</span>
+                <span class="quota-count" style="color:${color}">
+                    <strong>${today}</strong> <span style="opacity:.6">/ ${total}</span>
+                </span>
+            </div>
+            <div class="quota-progress">
+                <div class="quota-progress-track">
+                    <div class="quota-progress-fill" style="width:${usageRate}%;background:${color}"></div>
+                </div>
+                ${showRemaining ? `<span class="quota-progress-text" style="color:${isExhausted ? QUOTA_COLORS.danger : color}">${isExhausted ? '额度已用尽' : `剩余 ${remaining} 本`}</span>` : ''}
+            </div>
+            ${showUpgradeHint && !quota.is_vip && !quota.is_admin && (remaining <= 1 || isExhausted) ? `
+                <div class="quota-upgrade-hint">
+                    <span>&#128640;</span>
+                    <span>${isExhausted ? '升级会员解锁更多阅读额度' : '额度即将用完，升级会员获取更多'}</span>
+                    <a href="#/profile" class="quota-upgrade-link">升级 &rarr;</a>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+async function loadCurrentQuota() {
+    try {
+        const res = await api.public.quota();
+        const quota = res.data || {};
+        const user = getUser();
+        if (user) {
+            user.quota = quota;
+            setUser(user);
+        }
+        return quota;
+    } catch (e) {
+        const user = getUser();
+        if (user && user.quota) return user.quota;
+        return null;
+    }
+}
+
+function getCachedQuota() {
+    const user = getUser();
+    if (user && user.quota) return user.quota;
+    return null;
+}

@@ -148,28 +148,10 @@ class AlbumController
             return json_error('画册不存在或未发布', 404);
         }
 
-        $userLevel = 0;
-        $userId = 0;
-        $user = null;
-        $memberLevel = null;
-        $token = $request->header('Authorization', '');
-        if (str_starts_with($token, 'Bearer ')) {
-            $token = substr($token, 7);
-        }
-        if (!empty($token)) {
-            $payload = verify_token($token);
-            if ($payload) {
-                $user = User::find($payload['uid'] ?? 0);
-                if ($user) {
-                    $memberLevel = MemberLevel::find($user->member_level_id);
-                    $userLevel = $memberLevel ? $memberLevel->level : 0;
-                    $userId = $user->id;
-                    if ($user->role === 'admin') {
-                        $userLevel = 999;
-                    }
-                }
-            }
-        }
+        $ctx = resolve_quota_context($request);
+        $userLevel = $ctx['effective_level'];
+        $userId = $ctx['user_id'];
+        $user = $ctx['user'];
 
         $needPassword = false;
         if ($album->min_level > $userLevel) {
@@ -179,7 +161,13 @@ class AlbumController
                     $needPassword = true;
                 }
             } else {
-                return json_error('您的会员等级不足，无法查看此画册', 403);
+                $quotaInfo = get_quota_info($ctx);
+                return json_error('您的会员等级不足，无法查看此画册', 403, [
+                    'min_level_required' => $album->min_level,
+                    'your_level'         => $ctx['level_value'],
+                    'your_level_name'    => $ctx['level_name'],
+                    'quota'              => $quotaInfo,
+                ]);
             }
         }
 
@@ -194,52 +182,34 @@ class AlbumController
             ], '请输入分享密码');
         }
 
-        $ip = $request->ip();
-        $userAgent = $request->header('user-agent', '');
-        $visitorKey = DailyQuota::getVisitorKey($ip, $userAgent);
         $isRestrictedAlbum = $album->min_level > 0;
+        $bypassQuota = !$isRestrictedAlbum || $ctx['is_unlimited'];
 
-        if ($isRestrictedAlbum) {
-            $isAdmin = ($user && $user->role === 'admin');
-            $isVip = ($memberLevel && $memberLevel->level >= 3);
-            $bypassQuota = $isAdmin || $isVip;
-
-            if (!$bypassQuota) {
-                $alreadyRead = DailyQuota::isAlbumReadToday($userId, $id, $visitorKey);
-                if (!$alreadyRead) {
-                    $dailyQuota = 0;
-                    if ($userId > 0 && $memberLevel) {
-                        $dailyQuota = (int)$memberLevel->daily_quota;
-                    } else {
-                        $dailyQuota = 1;
-                    }
-
-                    if ($dailyQuota > 0) {
-                        $todayCount = DailyQuota::countToday($userId, $visitorKey);
-                        if ($todayCount >= $dailyQuota) {
-                            return json_error('今日额度已用尽，升级会员或明日再来', 40301, [
-                                'quota_exhausted' => true,
-                                'today_count'     => $todayCount,
-                                'daily_quota'     => $dailyQuota,
-                                'upgrade_hint'    => true,
-                            ]);
-                        }
-                    }
-                }
+        if (!$bypassQuota) {
+            $result = DailyQuota::consumeQuota(
+                $userId,
+                (int)$album->id,
+                $ctx['visitor_key'],
+                (int)$ctx['daily_quota']
+            );
+            if (!$result['success'] && !empty($result['exhausted'])) {
+                $quotaInfo = get_quota_info($ctx);
+                $quotaInfo['today_count'] = (int)$result['today_count'];
+                $quotaInfo['remaining'] = 0;
+                $quotaInfo['usage_rate'] = 100;
+                return json_error('今日额度已用尽，升级会员或明日再来', 40301, [
+                    'quota_exhausted' => true,
+                    'upgrade_hint'    => true,
+                    'is_restricted'   => true,
+                    'album_title'     => $album->title,
+                    'quota'           => $quotaInfo,
+                ]);
             }
         }
 
         Album::where('id', $id)->inc('view_count')->update();
 
-        AccessLog::addLog($id, $userId > 0 ? $userId : 0, $ip, $userAgent);
-
-        if ($isRestrictedAlbum) {
-            try {
-                DailyQuota::recordRead($userId, $id, $visitorKey);
-            } catch (\Exception $e) {
-                Log::warning("配额记录失败: user_id={$userId}, album_id={$id}, error=" . $e->getMessage());
-            }
-        }
+        AccessLog::addLog($id, $userId, $ctx['ip'], $ctx['user_agent']);
 
         $pages = AlbumPage::where('album_id', $id)
             ->order('page_number', 'asc')
@@ -249,23 +219,9 @@ class AlbumController
                 return $page;
             });
 
-        $ipSuffix = $this->getIpSuffix($ip);
+        $ipSuffix = $this->getIpSuffix($ctx['ip']);
         $viewerName = $userId > 0 ? ($user->nickname ?: $user->username) : '';
-
-        $quotaInfo = null;
-        if ($userId > 0 && $memberLevel) {
-            $quotaInfo = [
-                'today_count' => DailyQuota::countToday($userId, ''),
-                'daily_quota' => (int)$memberLevel->daily_quota,
-                'is_unlimited' => $memberLevel->daily_quota == 0 || ($user && $user->role === 'admin'),
-            ];
-        } elseif ($userId === 0) {
-            $quotaInfo = [
-                'today_count'  => DailyQuota::countToday(0, $visitorKey),
-                'daily_quota'  => 1,
-                'is_unlimited' => false,
-            ];
-        }
+        $quotaInfo = get_quota_info($ctx);
 
         return json_success([
             'need_password' => false,
@@ -281,6 +237,8 @@ class AlbumController
                 'category'             => $album->category,
                 'view_count'           => $album->view_count,
                 'favorite_count'       => AlbumFavorite::where('album_id', $album->id)->count(),
+                'is_restricted'        => $isRestrictedAlbum,
+                'min_level'            => (int)$album->min_level,
                 'watermark' => [
                     'enabled' => (bool)$album->watermark_enabled,
                     'text'    => $album->watermark_text,
@@ -302,50 +260,8 @@ class AlbumController
 
     public function publicQuota(Request $request)
     {
-        $userId = 0;
-        $user = null;
-        $memberLevel = null;
-        $token = $request->header('Authorization', '');
-        if (str_starts_with($token, 'Bearer ')) {
-            $token = substr($token, 7);
-        }
-        if (!empty($token)) {
-            $payload = verify_token($token);
-            if ($payload) {
-                $user = User::find($payload['uid'] ?? 0);
-                if ($user) {
-                    $memberLevel = MemberLevel::find($user->member_level_id);
-                    $userId = $user->id;
-                }
-            }
-        }
-
-        $ip = $request->ip();
-        $userAgent = $request->header('user-agent', '');
-        $visitorKey = DailyQuota::getVisitorKey($ip, $userAgent);
-
-        if ($userId > 0 && $memberLevel) {
-            $dailyQuota = (int)$memberLevel->daily_quota;
-            $isAdmin = $user && $user->role === 'admin';
-            $isVip = $memberLevel->level >= 3;
-            return json_success([
-                'user_id'      => $userId,
-                'today_count'  => DailyQuota::countToday($userId, ''),
-                'daily_quota'  => $dailyQuota,
-                'is_unlimited' => $dailyQuota == 0 || $isAdmin || $isVip,
-                'level_name'   => $memberLevel->name,
-                'is_guest'     => false,
-            ]);
-        }
-
-        return json_success([
-            'user_id'      => 0,
-            'today_count'  => DailyQuota::countToday(0, $visitorKey),
-            'daily_quota'  => 1,
-            'is_unlimited' => false,
-            'level_name'   => '访客',
-            'is_guest'     => true,
-        ]);
+        $ctx = resolve_quota_context($request);
+        return json_success(get_quota_info($ctx));
     }
 
     private function getIpSuffix($ip)

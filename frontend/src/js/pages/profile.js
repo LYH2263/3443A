@@ -3,16 +3,79 @@ let profileQuotaCache = null;
 let continueReadingList = [];
 let continueReadingLoading = false;
 
-function formatQuotaDisplay(quota) {
-    if (!quota) return '';
-    if (quota.is_unlimited) {
-        return '<span class="badge badge-success" style="font-size:13px;padding:4px 10px">&#9889; 不限量</span>';
+function renderUpgradeCard(user, quota) {
+    if (!user || (quota && quota.is_vip) || (quota && quota.is_admin) || user.role === 'admin') {
+        return '';
     }
-    const color = quota.today_count >= quota.daily_quota ? 'var(--danger)' : 'var(--primary)';
+    const remaining = quota && quota.remaining != null ? quota.remaining : (quota ? Math.max(0, (quota.daily_quota || 0) - (quota.today_count || 0)) : 0);
+    const exhausted = quota && (quota.today_count >= quota.daily_quota);
+    const low = remaining <= 1;
+
     return `
-        <span style="font-size:15px;font-weight:500;color:${color}">
-            今日已读 <strong>${quota.today_count}</strong> / ${quota.daily_quota}
-        </span>
+        <div class="profile-upgrade-card ${exhausted ? 'exhausted' : low ? 'low' : ''}">
+            <div class="profile-upgrade-left">
+                <div class="profile-upgrade-icon">${exhausted ? '&#128345;' : '&#128640;'}</div>
+                <div>
+                    <div class="profile-upgrade-title">
+                        ${exhausted ? '今日额度已用尽' : low ? '额度即将用完' : '升级会员获取更多权益'}
+                    </div>
+                    <div class="profile-upgrade-desc">
+                        ${exhausted ? '升级至更高等级可解锁更多每日阅读配额' :
+                          low ? `仅剩 ${remaining} 本配额，升级后可畅读更多画册` :
+                          '升级至银牌/金牌/VIP会员，享受更高阅读配额与专属权益'}
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-primary btn-sm profile-upgrade-btn" onclick="showUpgradeModal()">
+                ${exhausted ? '立即升级' : '查看权益'}
+            </button>
+        </div>
+    `;
+}
+
+function showUpgradeModal() {
+    const container = document.getElementById('modal-container');
+    container.innerHTML = `
+        <div class="modal-overlay" onclick="closeModal(event)">
+            <div class="modal-content" onclick="event.stopPropagation()" style="max-width:520px">
+                <div class="modal-header">
+                    <h3>&#128176; 会员升级</h3>
+                    <button class="modal-close" onclick="document.getElementById('modal-container').innerHTML=''">&times;</button>
+                </div>
+                <div class="modal-body" style="padding:0">
+                    <div class="upgrade-plans">
+                        <div class="upgrade-plan">
+                            <div class="upgrade-plan-header">
+                                <span class="upgrade-plan-name">银牌会员</span>
+                                <span class="upgrade-plan-quota">5本/天</span>
+                            </div>
+                            <p style="margin:6px 0 0 0;color:var(--gray-500);font-size:13px">浏览银牌及以下等级画册</p>
+                        </div>
+                        <div class="upgrade-plan">
+                            <div class="upgrade-plan-header">
+                                <span class="upgrade-plan-name">金牌会员</span>
+                                <span class="upgrade-plan-quota">10本/天</span>
+                            </div>
+                            <p style="margin:6px 0 0 0;color:var(--gray-500);font-size:13px">浏览金牌及以下等级画册</p>
+                        </div>
+                        <div class="upgrade-plan featured">
+                            <div class="upgrade-plan-header">
+                                <span class="upgrade-plan-name">VIP会员</span>
+                                <span class="upgrade-plan-badge">推荐</span>
+                                <span class="upgrade-plan-quota" style="color:var(--primary)">&#9889; 不限量</span>
+                            </div>
+                            <p style="margin:6px 0 0 0;color:var(--gray-500);font-size:13px">全站画册无限畅读，专享最高等级权限</p>
+                        </div>
+                    </div>
+                    <div style="padding:16px 24px;background:var(--gray-50);border-top:1px solid var(--gray-200);color:var(--gray-500);font-size:13px;text-align:center">
+                        请联系管理员开通会员升级服务
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="document.getElementById('modal-container').innerHTML=''">关闭</button>
+                </div>
+            </div>
+        </div>
     `;
 }
 
@@ -25,7 +88,8 @@ function renderProfilePage() {
         : escapeHtml((user.nickname || user.username || 'U').charAt(0).toUpperCase());
 
     const quota = user.quota || profileQuotaCache;
-    const quotaDisplay = formatQuotaDisplay(quota);
+    const quotaBar = renderQuotaBar(quota, { compact: false, showRemaining: true, showUpgradeHint: false });
+    const upgradeCard = renderUpgradeCard(user, quota);
 
     return `
         <div class="profile-page">
@@ -36,9 +100,10 @@ function renderProfilePage() {
                         <div class="profile-avatar-large" id="profile-avatar-display">${avatarContent}</div>
                         <h2 id="profile-nickname-display">${escapeHtml(user.nickname || user.username)}</h2>
                         <p style="margin-bottom:12px">${escapeHtml(user.member_level ? user.member_level.name : '普通会员')}</p>
-                        <div id="profile-quota-display" style="margin-bottom:8px">
-                            ${quota ? quotaDisplay : '<span style="color:var(--gray-400);font-size:13px">配额加载中...</span>'}
+                        <div id="profile-quota-display" style="width:100%;max-width:420px;margin:0 0 12px 0">
+                            ${quotaBar || '<span style="color:var(--gray-400);font-size:13px">配额加载中...</span>'}
                         </div>
+                        ${upgradeCard}
                     </div>
                     <div class="profile-tabs">
                         <button class="profile-tab ${profileTab === 'info' ? 'active' : ''}" onclick="switchProfileTab('info')">个人信息</button>
@@ -206,8 +271,9 @@ async function initProfilePage() {
             }
             const el = document.getElementById('profile-quota-display');
             if (el) {
-                el.innerHTML = formatQuotaDisplay(res.data.quota);
+                el.innerHTML = renderQuotaBar(res.data.quota, { compact: false, showRemaining: true, showUpgradeHint: false });
             }
+            updateNavbarQuota(res.data.quota);
         }
     } catch (e) {}
 }

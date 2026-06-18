@@ -1998,6 +1998,250 @@ input:-webkit-autofill:focus {
     font-weight: 600;
 }
 
+/* ==================== Quota Display ==================== */
+.quota-display {
+    display: block;
+}
+.quota-display.compact {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.quota-unlimited-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.12));
+    color: #6366f1;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid rgba(99, 102, 241, 0.2);
+}
+.quota-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.quota-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--gray-600);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.quota-count {
+    font-size: 15px;
+    font-weight: 600;
+}
+.quota-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.quota-progress-track {
+    flex: 1;
+    height: 8px;
+    background: var(--gray-200);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.quota-progress-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 999px;
+    transition: width 0.3s ease;
+}
+.quota-progress-text {
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    min-width: 70px;
+    text-align: right;
+}
+.quota-upgrade-hint {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(239, 68, 68, 0.08));
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--gray-700);
+}
+.quota-upgrade-link {
+    margin-left: auto;
+    color: var(--primary);
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 13px;
+}
+.quota-upgrade-link:hover { text-decoration: underline; }
+
+/* Viewer header center layout */
+.viewer-header-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+    padding: 0 16px;
+}
+.viewer-header-center h2 {
+    margin: 0;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 480px;
+}
+.viewer-header-quota {
+    font-size: 12px;
+    opacity: 0.85;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.viewer-controls-separator {
+    width: 1px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.2);
+    margin: 0 4px;
+}
+.viewer-controls-quota {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* Profile upgrade card */
+.profile-upgrade-card {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    margin: 8px 0 4px 0;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(16, 185, 129, 0.06));
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: var(--radius);
+}
+.profile-upgrade-card.low {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(239, 68, 68, 0.06));
+    border-color: rgba(245, 158, 11, 0.25);
+}
+.profile-upgrade-card.exhausted {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(239, 68, 68, 0.05));
+    border-color: rgba(239, 68, 68, 0.3);
+}
+.profile-upgrade-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+.profile-upgrade-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+}
+.profile-upgrade-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--gray-800);
+    margin-bottom: 2px;
+}
+.profile-upgrade-desc {
+    font-size: 12px;
+    color: var(--gray-500);
+    line-height: 1.4;
+}
+.profile-upgrade-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* Upgrade plans modal */
+.upgrade-plans {
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.upgrade-plan {
+    padding: 14px 16px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius);
+    background: var(--gray-50);
+    transition: var(--transition);
+}
+.upgrade-plan:hover {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.04);
+}
+.upgrade-plan.featured {
+    border-color: var(--primary);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.05));
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.12);
+}
+.upgrade-plan-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.upgrade-plan-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--gray-800);
+}
+.upgrade-plan-quota {
+    margin-left: auto;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gray-600);
+}
+.upgrade-plan-badge {
+    padding: 2px 8px;
+    background: var(--primary);
+    color: var(--white);
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 999px;
+}
+
+.home-nav-quota-wrap .quota-display.compact {
+    color: inherit;
+}
+
+@media (max-width: 768px) {
+    .viewer-header-center h2 { max-width: 220px; font-size: 14px; }
+    .viewer-header-quota { font-size: 11px; padding: 2px 6px; }
+    .viewer-controls-quota { display: none; }
+    .viewer-controls-separator { display: none; }
+    .profile-upgrade-card { flex-wrap: wrap; }
+    .profile-upgrade-btn { width: 100%; }
+}
+
 /* ==================== Heatmap ==================== */
 .heatmap-page-card {
     background: var(--white);

@@ -1,6 +1,19 @@
+function updateNavbarQuota(quota) {
+    const el = document.getElementById('nav-quota');
+    if (!el) return;
+    if (!quota) {
+        el.innerHTML = '';
+        el.style.display = 'none';
+        return;
+    }
+    el.style.display = 'inline-flex';
+    el.innerHTML = renderQuotaBar(quota, { compact: true, showRemaining: true, showUpgradeHint: false });
+}
+
 function renderNavbar(activePage = '') {
     const user = getUser();
     const logged = isLoggedIn();
+    const quota = user && user.quota ? user.quota : null;
 
     let userSection = '';
     if (logged && user) {
@@ -8,6 +21,9 @@ function renderNavbar(activePage = '') {
             ? `<img src="${getImageUrl(user.avatar)}" alt="">`
             : escapeHtml((user.nickname || user.username || '').charAt(0).toUpperCase());
         userSection = `
+            <div class="home-nav-quota-wrap" id="nav-quota" title="今日阅读配额" style="display:${quota ? 'inline-flex' : 'none'};align-items:center;height:32px;padding:0 10px;margin-right:8px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:16px;font-size:13px">
+                ${renderQuotaBar(quota, { compact: true, showRemaining: true, showUpgradeHint: false }) || ''}
+            </div>
             <div class="home-nav-user" onclick="toggleUserDropdown(event)">
                 <div class="home-nav-avatar">${avatarContent}</div>
                 <span style="font-size:14px;color:var(--gray-700)" id="nav-nickname">${escapeHtml(user.nickname || user.username)}</span>

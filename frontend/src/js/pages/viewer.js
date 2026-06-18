@@ -164,11 +164,17 @@ function thumbIndexToFlipbookPage(thumbIndex) {
 }
 
 function renderViewerPage(id) {
+    const cachedQuota = getCachedQuota();
+    const quotaBar = renderQuotaBar(cachedQuota, { compact: true, showRemaining: true, showUpgradeHint: false });
+
     return `
         <div class="viewer-page">
             <div class="viewer-header">
                 <button class="viewer-back" onclick="window.location.hash='#/'">&#8592; 返回画册列表</button>
-                <h2 id="viewer-title">加载中...</h2>
+                <div class="viewer-header-center">
+                    <h2 id="viewer-title">加载中...</h2>
+                    <div class="viewer-header-quota" id="viewer-header-quota">${quotaBar || ''}</div>
+                </div>
                 <div class="viewer-header-actions">
                     <button class="viewer-header-btn" id="btn-toggle-favorite" onclick="toggleAlbumFavorite()" title="收藏">&#9734;</button>
                     <button class="viewer-header-btn" id="btn-toggle-sidebar" onclick="toggleSidebar()" title="缩略图导航">&#9776;</button>
@@ -237,6 +243,8 @@ function renderViewerPage(id) {
                 <button onclick="flipPrev()">&#9664; 上一页</button>
                 <span class="page-indicator" id="page-indicator">1 / 1</span>
                 <button onclick="flipNext()">下一页 &#9654;</button>
+                <div class="viewer-controls-separator"></div>
+                <div class="viewer-controls-quota" id="viewer-controls-quota" style="margin-left:12px">${renderQuotaBar(cachedQuota, { compact: true, showRemaining: true, showUpgradeHint: false }) || ''}</div>
                 <button onclick="toggleFullscreen()" style="margin-left:16px" title="全屏">&#9974;</button>
             </div>
             <div class="viewer-mobile-drawer-overlay" id="mobile-drawer-overlay" onclick="closeMobileDrawer()"></div>
@@ -254,10 +262,27 @@ function renderViewerPage(id) {
     `;
 }
 
-function showQuotaExhausted(todayCount, dailyQuota) {
+function updateViewerQuotaDisplay(quota) {
+    const headerEl = document.getElementById('viewer-header-quota');
+    const controlsEl = document.getElementById('viewer-controls-quota');
+    if (!quota) return;
+    const html = renderQuotaBar(quota, { compact: true, showRemaining: true, showUpgradeHint: false });
+    if (headerEl) headerEl.innerHTML = html;
+    if (controlsEl) controlsEl.innerHTML = html;
+}
+
+function showQuotaExhausted(todayCount, dailyQuota, quotaData) {
     document.getElementById('viewer-loading').style.display = 'none';
-    document.getElementById('viewer-quota-info').textContent =
-        `您今日已阅读 ${todayCount}/${dailyQuota} 本受限画册`;
+    const finalQuota = quotaData || {
+        today_count: todayCount,
+        daily_quota: dailyQuota,
+        is_unlimited: false,
+    };
+    updateViewerQuotaDisplay(finalQuota);
+    const el = document.getElementById('viewer-quota-info');
+    if (el) {
+        el.textContent = `您今日已阅读 ${todayCount}/${dailyQuota} 本受限画册，升级会员可获取更多阅读额度`;
+    }
     document.getElementById('viewer-quota-exhausted').style.display = 'flex';
     document.getElementById('viewer-title').textContent = '额度已用尽';
 }
@@ -290,6 +315,8 @@ async function initViewerPage(id) {
         }
     };
     try {
+        loadCurrentQuota().then(q => { if (q) updateViewerQuotaDisplay(q); }).catch(() => {});
+
         const res = await api.public.albumDetail(id, undefined, { suppressToast: true });
         if (res.data.need_password) {
             viewerState.needPassword = true;
@@ -303,7 +330,7 @@ async function initViewerPage(id) {
     } catch (e) {
         if (e.code === 40301) {
             const info = e.data || {};
-            showQuotaExhausted(info.today_count || 0, info.daily_quota || 0);
+            showQuotaExhausted(info.today_count || 0, info.daily_quota || 0, info.quota);
         } else {
             document.getElementById('viewer-loading').innerHTML = renderEmpty('画册加载失败');
         }
@@ -328,7 +355,7 @@ async function verifyAlbumPassword(id) {
         if (e.code === 40301) {
             const info = e.data || {};
             document.getElementById('viewer-password').style.display = 'none';
-            showQuotaExhausted(info.today_count || 0, info.daily_quota || 0);
+            showQuotaExhausted(info.today_count || 0, info.daily_quota || 0, info.quota);
         }
     }
 }
@@ -346,6 +373,9 @@ async function setupViewer(data) {
     }
 
     document.getElementById('viewer-title').textContent = data.album.title || '画册';
+    if (data.quota) {
+        updateViewerQuotaDisplay(data.quota);
+    }
     document.getElementById('viewer-loading').style.display = 'none';
 
     viewerState.isFavorited = false;

@@ -79,22 +79,115 @@ class DailyQuota extends Model
         }
     }
 
+    public static function consumeQuota(int $userId, int $albumId, string $visitorKey, int $dailyQuota): array
+    {
+        $today = date('Y-m-d');
+        $isGuest = $userId <= 0;
+
+        try {
+            Db::startTrans();
+
+            $query = Db::name('user_daily_quotas')->lock(true);
+            if ($isGuest) {
+                $currentCount = $query->where('visitor_key', $visitorKey)->where('read_date', $today)->count();
+            } else {
+                $currentCount = $query->where('user_id', $userId)->where('read_date', $today)->count();
+            }
+
+            if ($isGuest) {
+                $existing = Db::name('user_daily_quotas')
+                    ->where('visitor_key', $visitorKey)
+                    ->where('album_id', $albumId)
+                    ->where('read_date', $today)
+                    ->lock(true)
+                    ->find();
+            } else {
+                $existing = Db::name('user_daily_quotas')
+                    ->where('user_id', $userId)
+                    ->where('album_id', $albumId)
+                    ->where('read_date', $today)
+                    ->lock(true)
+                    ->find();
+            }
+
+            $alreadyRead = $existing !== null;
+
+            if (!$alreadyRead) {
+                if ($dailyQuota > 0 && $currentCount >= $dailyQuota) {
+                    Db::rollback();
+                    return [
+                        'success'       => false,
+                        'exhausted'     => true,
+                        'already_read'  => false,
+                        'today_count'   => $currentCount,
+                        'daily_quota'   => $dailyQuota,
+                    ];
+                }
+
+                try {
+                    Db::name('user_daily_quotas')->insert([
+                        'user_id'     => $isGuest ? 0 : $userId,
+                        'visitor_key' => $isGuest ? $visitorKey : '',
+                        'album_id'    => $albumId,
+                        'read_date'   => $today,
+                        'created_at'  => date('Y-m-d H:i:s'),
+                    ]);
+                    $currentCount++;
+                } catch (\Exception $e) {
+                    if (strpos($e->getMessage(), 'Duplicate') !== false) {
+                        $alreadyRead = true;
+                    } else {
+                        Db::rollback();
+                        throw $e;
+                    }
+                }
+            }
+
+            Db::commit();
+
+            return [
+                'success'       => true,
+                'exhausted'     => false,
+                'already_read'  => $alreadyRead,
+                'today_count'   => $currentCount,
+                'daily_quota'   => $dailyQuota,
+            ];
+        } catch (\Exception $e) {
+            try { Db::rollback(); } catch (\Exception $_) {}
+            throw $e;
+        }
+    }
+
     public static function levelQuotaUsageStats(): array
     {
         $today = date('Y-m-d');
+        $vipLevel = VIP_LEVEL_THRESHOLD;
         $sql = "
             SELECT
                 ml.id AS level_id,
+                ml.level,
                 ml.name AS level_name,
                 ml.daily_quota,
                 COUNT(DISTINCT u.id) AS user_count,
                 COUNT(DISTINCT CASE WHEN dq.read_date = '{$today}' THEN CONCAT(dq.user_id, '-', dq.album_id) END) AS today_reads
             FROM member_levels ml
-            LEFT JOIN users u ON u.member_level_id = ml.id AND u.status = 1
+            LEFT JOIN users u ON u.member_level_id = ml.id AND u.status = 1 AND u.role <> 'admin'
             LEFT JOIN user_daily_quotas dq ON dq.user_id = u.id
-            GROUP BY ml.id, ml.name, ml.daily_quota
+            GROUP BY ml.id, ml.level, ml.name, ml.daily_quota
             ORDER BY ml.level ASC
         ";
-        return Db::query($sql);
+        $rows = Db::query($sql);
+        foreach ($rows as &$r) {
+            $dailyQuota = (int)($r['daily_quota'] ?? 0);
+            $level = (int)($r['level'] ?? 0);
+            $userCount = (int)($r['user_count'] ?? 0);
+            $todayReads = (int)($r['today_reads'] ?? 0);
+            $isUnlimited = $dailyQuota === 0 || $level >= $vipLevel;
+            $expectedTotal = (!$isUnlimited && $userCount > 0) ? $dailyQuota * $userCount : 0;
+            $r['is_unlimited'] = $isUnlimited;
+            $r['expected_total'] = $expectedTotal;
+            $r['usage_rate'] = $expectedTotal > 0 ? min(100, round(($todayReads / $expectedTotal) * 100, 2)) : 0;
+        }
+        return $rows;
     }
 }

@@ -25,6 +25,7 @@ function renderHomePage() {
 }
 
 async function initHomePage() {
+    loadCurrentQuota().then(q => { if (q) updateNavbarQuota(q); }).catch(() => {});
     try {
         const catRes = await api.public.categories();
         homeState.categories = catRes.data || [];
@@ -113,10 +114,26 @@ async function loadHomeAlbums() {
         } catch (e) {}
 
         let html = '<div class="albums-grid">';
+        const quota = getCachedQuota();
+        const isUnlimited = quota && quota.is_unlimited;
+        const remaining = quota && quota.remaining != null ? quota.remaining :
+                          quota ? Math.max(0, (quota.daily_quota || 0) - (quota.today_count || 0)) : null;
+
         homeState.albums.forEach(album => {
             const coverUrl = album.cover_image_url ? getImageUrl(album.cover_image_url) : getPlaceholderImage();
-            const levelBadge = album.min_level > 0
-                ? `<span class="album-card-lock">&#128274; 会员专属</span>` : '';
+            let levelBadge = '';
+            if (album.min_level > 0) {
+                const minLevel = parseInt(album.min_level);
+                let levelText = '会员专属';
+                if (minLevel >= 3) levelText = 'VIP专属';
+                else if (minLevel === 2) levelText = '金牌及以上';
+                else if (minLevel === 1) levelText = '银牌及以上';
+
+                const quotaHint = isUnlimited
+                    ? ''
+                    : (remaining != null ? ` · 消耗1配额(剩${remaining})` : ' · 消耗1配额');
+                levelBadge = `<span class="album-card-lock" title="需${levelText}等级或以上会员方可浏览，且消耗1次每日配额">&#128274; ${levelText}${quotaHint}</span>`;
+            }
             const pwdBadge = album.has_password
                 ? `<span class="badge badge-warning" style="font-size:11px">密码访问</span>` : '';
 
