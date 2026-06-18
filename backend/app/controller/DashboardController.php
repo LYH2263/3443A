@@ -25,7 +25,7 @@ class DashboardController
         $userCount = User::count();
         $categoryCount = AlbumCategory::where('status', 1)->count();
         $totalViews = Album::sum('view_count');
-        $todayViews = AccessLog::whereDay('created_at')->count();
+        $todayViews = AccessLog::where('created_at', '>=', date('Y-m-d 00:00:00'))->count();
 
         $recentAlbums = Album::with(['category'])
             ->order('created_at', 'desc')
@@ -93,49 +93,54 @@ class DashboardController
     {
         $range = $request->get('range', 'today');
 
-        $query = AccessLog::where('province', '<>', '');
-
-        switch ($range) {
-            case '7days':
-                $query->where('created_at', '>=', date('Y-m-d 00:00:00', strtotime('-7 days')));
-                break;
-            case '30days':
-                $query->where('created_at', '>=', date('Y-m-d 00:00:00', strtotime('-30 days')));
-                break;
-            case 'today':
-            default:
-                $query->whereDay('created_at');
-                break;
+        if ($range === '7days') {
+            $startTime = date('Y-m-d 00:00:00', strtotime('-6 days'));
+        } elseif ($range === '30days') {
+            $startTime = date('Y-m-d 00:00:00', strtotime('-29 days'));
+        } else {
+            $startTime = date('Y-m-d 00:00:00');
         }
 
-        $provinceStats = $query->group('province')
+        $total = AccessLog::where('created_at', '>=', $startTime)->count();
+
+        $provinceStats = AccessLog::where('created_at', '>=', $startTime)
+            ->group('province')
             ->field('province, COUNT(*) as count')
             ->order('count', 'desc')
             ->select()
             ->toArray();
 
-        $total = array_sum(array_column($provinceStats, 'count'));
+        $unknownCount = 0;
+        $knownProvinces = [];
+        foreach ($provinceStats as $item) {
+            $province = $item['province'];
+            $count = (int)$item['count'];
+            if ($province === null || $province === '' || $province === '未知') {
+                $unknownCount += $count;
+            } else {
+                $knownProvinces[] = ['province' => $province, 'count' => $count];
+            }
+        }
 
-        $top10 = array_slice($provinceStats, 0, 10);
+        $top10 = array_slice($knownProvinces, 0, 10);
         $top10WithPercent = array_map(function ($item) use ($total) {
-            $item['count'] = (int)$item['count'];
-            $item['percent'] = $total > 0 ? round(($item['count'] / $total) * 100, 2) : 0;
-            return $item;
+            return [
+                'province' => $item['province'],
+                'count'    => (int)$item['count'],
+                'percent'  => $total > 0 ? round(($item['count'] / $total) * 100, 2) : 0,
+            ];
         }, $top10);
 
         $allProvinceMap = [];
-        foreach ($provinceStats as $item) {
+        foreach ($knownProvinces as $item) {
             $allProvinceMap[$item['province']] = (int)$item['count'];
         }
 
-        $unknownCount = $allProvinceMap['未知'] ?? 0;
-        unset($allProvinceMap['未知']);
-
         return json_success([
-            'top10'      => $top10WithPercent,
-            'province_map' => $allProvinceMap,
+            'top10'         => $top10WithPercent,
+            'province_map'  => $allProvinceMap,
             'unknown_count' => $unknownCount,
-            'total'      => $total,
+            'total'         => $total,
         ]);
     }
 
@@ -147,12 +152,17 @@ class DashboardController
         $processed = 0;
         $updated = 0;
         $failed = 0;
+        $lastId = 0;
 
         for ($batch = 0; $batch < $maxBatches; $batch++) {
-            $logs = AccessLog::where('province', '未知')
-                ->whereOr(function ($q) {
-                    $q->whereNull('province')->where('ip', '<>', '');
+            $logs = AccessLog::where('id', '>', $lastId)
+                ->where('ip', '<>', '')
+                ->where(function ($query) {
+                    $query->whereNull('province')
+                        ->whereOr('province', '')
+                        ->whereOr('province', '未知');
                 })
+                ->order('id', 'asc')
                 ->limit($batchSize)
                 ->select();
 
@@ -161,10 +171,8 @@ class DashboardController
             }
 
             foreach ($logs as $log) {
+                $lastId = $log->id;
                 $processed++;
-                if (empty($log->ip)) {
-                    continue;
-                }
 
                 try {
                     $region = IpRegion::resolve($log->ip);

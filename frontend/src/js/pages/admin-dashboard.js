@@ -183,7 +183,9 @@ async function loadRegionStats(range) {
                         <div class="region-total-badge">共 ${total} 次访问${unknownCount > 0 ? ` · 未知 ${unknownCount}` : ''}</div>
                     </div>
                     <div class="region-top10-list">
-                        ${top10Html || '<div class="region-empty">暂无数据</div>'}
+                        ${top10Html || (total > 0
+                            ? `<div class="region-empty">暂无省份维度数据<br><small>共 ${total} 次访问均为内网/未知IP</small></div>`
+                            : '<div class="region-empty">暂无数据</div>')}
                     </div>
                 </div>
             </div>
