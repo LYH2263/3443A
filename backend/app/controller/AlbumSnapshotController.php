@@ -20,9 +20,18 @@ class AlbumSnapshotController
         $page = $request->get('page', 1);
         $limit = $request->get('limit', 20);
 
-        $result = AlbumSnapshotService::getSnapshotList($albumId, $page, $limit);
-
-        return json_success($result);
+        try {
+            $result = AlbumSnapshotService::getSnapshotList($albumId, $page, $limit);
+            return json_success($result);
+        } catch (\Exception $e) {
+            Log::error('获取快照列表失败: album_id=' . $albumId . ', error=' . $e->getMessage());
+            return json_success([
+                'list'  => [],
+                'total' => 0,
+                'page'  => (int)$page,
+                'limit' => (int)$limit,
+            ]);
+        }
     }
 
     public function detail(Request $request, $albumId, $id)

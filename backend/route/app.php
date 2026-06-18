@@ -108,8 +108,8 @@ Route::group('api/admin', function () {
 
     // Album Snapshots (版本历史)
     Route::get('albums/:albumId/snapshots', 'AlbumSnapshotController@index');
-    Route::get('albums/:albumId/snapshots/:id', 'AlbumSnapshotController@detail');
     Route::get('albums/:albumId/snapshots/diff', 'AlbumSnapshotController@diff');
+    Route::get('albums/:albumId/snapshots/:id', 'AlbumSnapshotController@detail')->pattern(['id' => '\d+']);
     Route::post('albums/:albumId/snapshots/rollback', 'AlbumSnapshotController@rollback');
     Route::post('albums/:albumId/snapshots', 'AlbumSnapshotController@createManual');
 

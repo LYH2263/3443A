@@ -11,8 +11,45 @@ use think\facade\Log;
 
 class AlbumSnapshotService
 {
+    private static $tableChecked = false;
+
+    public static function ensureTableExists()
+    {
+        if (self::$tableChecked) {
+            return;
+        }
+        try {
+            $exists = Db::query("SHOW TABLES LIKE 'album_snapshots'");
+            if (empty($exists)) {
+                Db::execute("
+                    CREATE TABLE IF NOT EXISTS `album_snapshots` (
+                        `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        `album_id` INT UNSIGNED NOT NULL COMMENT '画册ID',
+                        `version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '版本号，递增',
+                        `snapshot_data` JSON NOT NULL COMMENT '快照数据（画册信息+页面列表）',
+                        `page_count` INT UNSIGNED DEFAULT 0 COMMENT '快照时的页面数',
+                        `size_bytes` INT UNSIGNED DEFAULT 0 COMMENT '快照数据大小(字节)',
+                        `operator_id` INT UNSIGNED DEFAULT NULL COMMENT '操作人ID',
+                        `remark` VARCHAR(200) DEFAULT '' COMMENT '快照备注',
+                        `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY `uk_album_version` (`album_id`, `version`),
+                        KEY `idx_album_id` (`album_id`),
+                        KEY `idx_created_at` (`created_at`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='画册快照表（版本历史）'
+                ");
+                Log::info('自动创建 album_snapshots 表');
+            }
+            self::$tableChecked = true;
+        } catch (\Exception $e) {
+            Log::error('确保 album_snapshots 表存在失败: ' . $e->getMessage());
+        }
+    }
+
     public static function createSnapshot($albumId, $operatorId, $remark = '', $sourceAlbum = null, $sourcePages = null)
     {
+        self::ensureTableExists();
+
         if ($sourceAlbum === null) {
             $sourceAlbum = Album::find($albumId);
             if (!$sourceAlbum) {
@@ -87,12 +124,14 @@ class AlbumSnapshotService
 
     public static function getSnapshotList($albumId, $page = 1, $limit = 20)
     {
-        $query = AlbumSnapshot::with(['operator'])
-            ->where('album_id', $albumId)
-            ->order('version', 'desc');
+        self::ensureTableExists();
 
-        $total = $query->count();
-        $list = $query->page($page, $limit)->select();
+        $total = AlbumSnapshot::where('album_id', $albumId)->count();
+        $list = AlbumSnapshot::with(['operator'])
+            ->where('album_id', $albumId)
+            ->order('version', 'desc')
+            ->page($page, $limit)
+            ->select();
 
         $list->each(function ($item) {
             $item->makeHidden(['snapshot_data']);
@@ -280,6 +319,8 @@ class AlbumSnapshotService
 
         self::createSnapshot($albumId, $operatorId, "回滚前快照");
 
+        self::ensureTableExists();
+
         Db::startTrans();
         try {
             $snapshotData = $targetSnapshot->snapshot_data;
@@ -300,9 +341,13 @@ class AlbumSnapshotService
             }
             $album->save();
 
-            $currentPages = AlbumPage::where('album_id', $albumId)
+            $currentPagesCollection = AlbumPage::where('album_id', $albumId)
                 ->order('page_number', 'asc')
-                ->column('*', 'page_number');
+                ->select();
+            $currentPages = [];
+            foreach ($currentPagesCollection as $p) {
+                $currentPages[$p->page_number] = $p;
+            }
 
             $targetPageNumbers = array_column($pagesData, 'page_number');
             $currentPageNumbers = array_keys($currentPages);
@@ -315,7 +360,7 @@ class AlbumSnapshotService
             foreach ($pagesData as $pageData) {
                 $num = $pageData['page_number'];
                 if (isset($currentPages[$num])) {
-                    $page = AlbumPage::find($currentPages[$num]['id']);
+                    $page = $currentPages[$num];
                     $page->image = $pageData['image'];
                     $page->title = $pageData['title'] ?? '';
                     $page->description = $pageData['description'] ?? '';

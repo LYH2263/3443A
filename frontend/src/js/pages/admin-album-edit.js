@@ -618,7 +618,7 @@ async function saveAlbum(id) {
 
     try {
         if (id) {
-            const res = await api.admin.updateAlbum(id, data);
+            const res = await api.admin.updateAlbum(id, data, { suppressToast: true });
             if (res.data && res.data.current_version !== undefined) {
                 editAlbumState.album.current_version = res.data.current_version;
             }
@@ -626,14 +626,25 @@ async function saveAlbum(id) {
             window._albumCoverPath = null;
             window._albumBgPath = null;
             window._albumLogoPath = null;
+            if (document.getElementById('history-drawer')) {
+                loadSnapshots(id);
+            }
         } else {
             const res = await api.admin.createAlbum(data);
             showToast('画册创建成功', 'success');
             window.location.hash = `#/admin/albums/edit/${res.data.id}`;
         }
     } catch (e) {
-        if (e.code === 409 && e.data && e.data.conflict) {
-            showToast('画册已被其他人修改，请刷新后重试', 'error');
+        if (e._isBusinessError && e.data && e.data.conflict) {
+            showConfirmModal(
+                '版本冲突',
+                '画册已被其他人修改，您的更改未保存。<br><br>点击"确定"刷新页面获取最新内容（当前编辑内容将丢失），或点击"取消"保留当前编辑。',
+                () => {
+                    initAdminAlbumEdit(id);
+                }
+            );
+        } else if (e._isBusinessError) {
+            showToast(e.message || '保存失败', 'error');
         }
     } finally {
         btn.disabled = false;

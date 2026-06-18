@@ -91,7 +91,7 @@ async function apiRequest(url, options = {}) {
         const data = await response.json();
 
         if (data.code !== 200) {
-            if (data.code !== 40301 || !options.suppressToast) {
+            if (!options.suppressToast) {
                 showToast(data.message || '操作失败', 'error');
             }
             const error = new Error(data.message);
@@ -137,7 +137,7 @@ const api = {
         albums: (params) => apiRequest('/admin/albums?' + new URLSearchParams(params || {})),
         albumDetail: (id) => apiRequest(`/admin/albums/${id}`),
         createAlbum: (data) => apiRequest('/admin/albums', { method: 'POST', body: data }),
-        updateAlbum: (id, data) => apiRequest(`/admin/albums/${id}`, { method: 'PUT', body: data }),
+        updateAlbum: (id, data, opts) => apiRequest(`/admin/albums/${id}`, { method: 'PUT', body: data, ...opts }),
         deleteAlbum: (id) => apiRequest(`/admin/albums/${id}`, { method: 'DELETE' }),
         albumPages: (albumId) => apiRequest(`/admin/albums/${albumId}/pages`),
         addPage: (albumId, data) => apiRequest(`/admin/albums/${albumId}/pages`, { method: 'POST', body: data }),
