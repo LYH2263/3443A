@@ -147,6 +147,7 @@ async function quickUnfavorite(event, albumId) {
     try {
         await api.favorites.toggle(albumId);
         favoriteStateMap[albumId] = false;
+        updateFavoriteButtonUI(albumId);
         showToast('已取消收藏', 'success');
         const idx = favoritesState.albums.findIndex(a => a.id === albumId);
         if (idx !== -1) {

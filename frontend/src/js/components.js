@@ -78,6 +78,7 @@ function logout() {
         clearAllLocalProgress(currentUserId);
     }
 
+    clearFavoriteStates();
     removeToken();
     showToast('已退出登录', 'success');
     window.location.hash = '#/login';
@@ -245,6 +246,28 @@ function updateFavoriteButtonUI(albumId) {
 
         btn.title = favorited ? '取消收藏' : '收藏';
     });
+
+    const viewerBtn = document.getElementById('btn-toggle-favorite');
+    if (viewerBtn && typeof viewerState !== 'undefined' && viewerState.albumId === albumId) {
+        const loading = favoriteLoadingSet.has(albumId);
+        const favorited = favoriteStateMap[albumId] || false;
+        if (loading) {
+            viewerBtn.innerHTML = '<span class="spinner spinner-sm" style="border-color:rgba(255,255,255,0.2);border-top-color:var(--white)"></span>';
+            viewerBtn.classList.add('loading');
+        } else {
+            viewerBtn.innerHTML = favorited ? '&#11088;' : '&#9734;';
+            viewerBtn.classList.remove('loading');
+        }
+        viewerBtn.classList.toggle('bookmarked', favorited);
+        viewerBtn.title = favorited ? '取消收藏' : '收藏';
+    }
+}
+
+function clearFavoriteStates() {
+    for (const key in favoriteStateMap) {
+        delete favoriteStateMap[key];
+    }
+    favoriteLoadingSet.clear();
 }
 
 async function loadFavoriteStates(albumIds) {

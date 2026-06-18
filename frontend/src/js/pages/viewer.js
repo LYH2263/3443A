@@ -409,15 +409,17 @@ async function setupViewer(data) {
     }
     document.getElementById('viewer-loading').style.display = 'none';
 
-    viewerState.isFavorited = false;
+    viewerState.isFavorited = favoriteStateMap[viewerState.albumId] || false;
+    updateFavoriteButtonViewer();
+
     if (isLoggedIn()) {
         try {
             const favRes = await api.favorites.check(viewerState.albumId);
             viewerState.isFavorited = favRes.data && favRes.data.favorited;
             favoriteStateMap[viewerState.albumId] = viewerState.isFavorited;
+            updateFavoriteButtonUI(viewerState.albumId);
         } catch (e) {}
     }
-    updateFavoriteButtonViewer();
 
     if (data.album.background_image_url) {
         document.getElementById('viewer-bg').style.backgroundImage = `url(${getImageUrl(data.album.background_image_url)})`;
@@ -690,7 +692,7 @@ function updateFavoriteButtonViewer() {
     const btn = document.getElementById('btn-toggle-favorite');
     if (!btn) return;
     const loading = favoriteLoadingSet.has(viewerState.albumId);
-    const favorited = viewerState.isFavorited;
+    const favorited = favoriteStateMap[viewerState.albumId] || false;
     if (loading) {
         btn.innerHTML = '<span class="spinner spinner-sm" style="border-color:rgba(255,255,255,0.2);border-top-color:var(--white)"></span>';
         btn.classList.add('loading');
@@ -710,9 +712,9 @@ async function toggleAlbumFavorite() {
     }
     if (favoriteLoadingSet.has(viewerState.albumId)) return;
 
-    const prevState = viewerState.isFavorited;
+    const prevState = favoriteStateMap[viewerState.albumId] || false;
     favoriteLoadingSet.add(viewerState.albumId);
-    updateFavoriteButtonViewer();
+    updateFavoriteButtonUI(viewerState.albumId);
 
     try {
         const res = await api.favorites.toggle(viewerState.albumId);
@@ -727,7 +729,7 @@ async function toggleAlbumFavorite() {
         favoriteStateMap[viewerState.albumId] = prevState;
     } finally {
         favoriteLoadingSet.delete(viewerState.albumId);
-        updateFavoriteButtonViewer();
+        updateFavoriteButtonUI(viewerState.albumId);
     }
 }
 
