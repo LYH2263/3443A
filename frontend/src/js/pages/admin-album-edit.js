@@ -709,22 +709,23 @@ function updateWatermarkPreview() {
     const canvas = document.getElementById('watermark-preview-canvas');
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
-    const text = document.getElementById('watermark-text').value || '示例水印';
+    const rawText = document.getElementById('watermark-text').value || '版权所有';
     const color = document.getElementById('watermark-color').value;
     const opacity = parseInt(document.getElementById('watermark-opacity').value) / 100;
     const density = parseInt(document.getElementById('watermark-density').value);
 
-    const dpr = window.devicePixelRatio || 1;
+    const previewViewerInfo = {
+        username: '预览用户',
+        date: new Date().toISOString().slice(0, 10),
+        ip_suffix: '12.34',
+    };
+    const displayText = resolveWatermarkPlaceholdersGlobal(rawText, previewViewerInfo);
+
     const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
+    const w = rect.width || 400;
+    const h = rect.height || 280;
 
-    const w = rect.width;
-    const h = rect.height;
-
-    ctx.clearRect(0, 0, w, h);
+    const ctx = setupWatermarkCanvas(canvas, w, h);
 
     const gradient = ctx.createLinearGradient(0, 0, w, h);
     gradient.addColorStop(0, '#e0e7ff');
@@ -733,42 +734,10 @@ function updateWatermarkPreview() {
     ctx.fillRect(0, 0, w, h);
 
     ctx.fillStyle = '#6366f1';
-    ctx.font = 'bold 16px sans-serif';
+    ctx.font = `bold 16px ${WATERMARK_FONT_FAMILY}`;
     ctx.fillText('预览图', 20, 30);
 
-    drawWatermarkText(ctx, text, color, opacity, density, w, h);
-}
-
-function drawWatermarkText(ctx, text, color, opacity, density, width, height) {
-    ctx.save();
-
-    const fontSize = 14;
-    const angle = -25 * Math.PI / 180;
-    const spacingX = 180 / density;
-    const spacingY = 100 / density;
-
-    ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif`;
-    ctx.fillStyle = color;
-    ctx.globalAlpha = opacity;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const diagonal = Math.sqrt(width * width + height * height);
-    const startX = -diagonal / 2;
-    const endX = diagonal / 2 + spacingX;
-    const startY = -diagonal / 2;
-    const endY = diagonal / 2 + spacingY;
-
-    ctx.translate(width / 2, height / 2);
-    ctx.rotate(angle);
-
-    for (let y = startY; y < endY; y += spacingY) {
-        for (let x = startX; x < endX; x += spacingX) {
-            ctx.fillText(text, x, y);
-        }
-    }
-
-    ctx.restore();
+    drawWatermarkPatternGlobal(ctx, displayText, color, opacity, density, w, h);
 }
 
 function initWatermarkPreview() {

@@ -229,3 +229,68 @@ function normalizeFlipbookPage(page, totalPages, isDoublePageMode) {
     const normalized = Math.ceil(page / 2);
     return Math.max(1, Math.min(totalPages || 1, normalized));
 }
+
+const WATERMARK_FONT_FAMILY = `-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif`;
+const WATERMARK_ANGLE_DEG = -25;
+const WATERMARK_REF_WIDTH = 800;
+
+function resolveWatermarkPlaceholdersGlobal(text, viewerInfo) {
+    if (!text) return '';
+    const info = viewerInfo || {};
+    const username = info.username || '访客';
+    const date = info.date || new Date().toISOString().slice(0, 10);
+    const ipSuffix = info.ip_suffix || '';
+    return text
+        .replace(/\{用户名\}/g, username)
+        .replace(/\{日期\}/g, date)
+        .replace(/\{IP后两段\}/g, ipSuffix);
+}
+
+function drawWatermarkPatternGlobal(ctx, text, color, opacity, density, width, height) {
+    ctx.save();
+
+    const fontSize = Math.max(12, Math.min(18, width / (WATERMARK_REF_WIDTH / 14)));
+    const angle = WATERMARK_ANGLE_DEG * Math.PI / 180;
+    const baseSpacingX = 200 / density;
+    const baseSpacingY = 110 / density;
+    const scaleFactor = width / WATERMARK_REF_WIDTH;
+    const clampScale = Math.max(0.6, Math.min(1.5, scaleFactor));
+    const spacingX = baseSpacingX * clampScale;
+    const spacingY = baseSpacingY * clampScale;
+
+    ctx.font = `${fontSize}px ${WATERMARK_FONT_FAMILY}`;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = opacity;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const diagonal = Math.sqrt(width * width + height * height);
+    const startX = -diagonal / 2;
+    const endX = diagonal / 2 + spacingX;
+    const startY = -diagonal / 2;
+    const endY = diagonal / 2 + spacingY;
+
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate(angle);
+
+    for (let y = startY; y < endY; y += spacingY) {
+        for (let x = startX; x < endX; x += spacingX) {
+            ctx.fillText(text, x, y);
+        }
+    }
+
+    ctx.restore();
+}
+
+function setupWatermarkCanvas(canvas, width, height) {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+    return ctx;
+}

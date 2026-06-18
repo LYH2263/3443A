@@ -388,6 +388,7 @@ async function setupViewer(data) {
             if (watermarkEnabled) {
                 pageEl.innerHTML = `
                     <div class="page-image-wrapper">
+                        <div class="page-image-loading"></div>
                         ${imgHtml}
                         <canvas class="page-watermark" data-page-index="${index}"></canvas>
                     </div>
@@ -690,16 +691,7 @@ function highlightCurrentThumb() {
 }
 
 function resolveWatermarkPlaceholders(text) {
-    if (!text) return '';
-    const info = viewerState.viewerInfo || {};
-    const username = info.username || '访客';
-    const date = info.date || new Date().toISOString().slice(0, 10);
-    const ipSuffix = info.ip_suffix || '';
-
-    return text
-        .replace(/\{用户名\}/g, username)
-        .replace(/\{日期\}/g, date)
-        .replace(/\{IP后两段\}/g, ipSuffix);
+    return resolveWatermarkPlaceholdersGlobal(text, viewerState.viewerInfo);
 }
 
 function onPageImageLoad(img) {
@@ -708,6 +700,12 @@ function onPageImageLoad(img) {
     const canvas = document.querySelector(`.page-watermark[data-page-index="${pageIndex}"]`);
     if (canvas) {
         drawPageWatermark(canvas, img);
+        canvas.dataset.drawn = '1';
+    }
+    const wrapper = img.parentElement;
+    if (wrapper) {
+        const loading = wrapper.querySelector('.page-image-loading');
+        if (loading) loading.style.display = 'none';
     }
 }
 
@@ -715,64 +713,69 @@ function drawPageWatermark(canvas, img) {
     const wm = viewerState.watermark;
     if (!wm || !wm.enabled) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    const width = img.clientWidth || img.offsetWidth;
-    const height = img.clientHeight || img.offsetHeight;
+    const width = img.clientWidth || img.offsetWidth || canvas.parentElement.clientWidth || 0;
+    const height = img.clientHeight || img.offsetHeight || canvas.parentElement.clientHeight || 0;
 
     if (width === 0 || height === 0) {
         requestAnimationFrame(() => drawPageWatermark(canvas, img));
         return;
     }
 
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    canvas.style.width = width + 'px';
-    canvas.style.height = height + 'px';
-
-    const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
+    const ctx = setupWatermarkCanvas(canvas, width, height);
 
     const text = resolveWatermarkPlaceholders(wm.text || '版权所有');
     const color = wm.color || '#000000';
     const opacity = wm.opacity ?? 0.15;
     const density = wm.density || 3;
 
-    drawWatermarkPattern(ctx, text, color, opacity, density, width, height);
+    drawWatermarkPatternGlobal(ctx, text, color, opacity, density, width, height);
 }
 
-function drawWatermarkPattern(ctx, text, color, opacity, density, width, height) {
-    ctx.save();
+function drawPlaceholderWatermark(canvas, width, height) {
+    const wm = viewerState.watermark;
+    if (!wm || !wm.enabled) return;
+    if (width === 0 || height === 0) return;
 
-    const fontSize = Math.max(12, Math.min(18, width / 40));
-    const angle = -25 * Math.PI / 180;
-    const baseSpacingX = 200 / density;
-    const baseSpacingY = 110 / density;
-    const scaleFactor = width / 800;
-    const spacingX = baseSpacingX * Math.max(0.6, Math.min(1.5, scaleFactor));
-    const spacingY = baseSpacingY * Math.max(0.6, Math.min(1.5, scaleFactor));
+    const ctx = setupWatermarkCanvas(canvas, width, height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
 
-    ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif`;
-    ctx.fillStyle = color;
-    ctx.globalAlpha = opacity;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    const text = resolveWatermarkPlaceholders(wm.text || '版权所有');
+    const color = wm.color || '#000000';
+    const opacity = wm.opacity ?? 0.15;
+    const density = wm.density || 3;
 
-    const diagonal = Math.sqrt(width * width + height * height);
-    const startX = -diagonal / 2;
-    const endX = diagonal / 2 + spacingX;
-    const startY = -diagonal / 2;
-    const endY = diagonal / 2 + spacingY;
+    drawWatermarkPatternGlobal(ctx, text, color, opacity, density, width, height);
+}
 
-    ctx.translate(width / 2, height / 2);
-    ctx.rotate(angle);
+function prerenderWatermarksForVisiblePages() {
+    if (!viewerState.watermark || !viewerState.watermark.enabled) return;
+    if (!viewerState.flipbookReady) return;
 
-    for (let y = startY; y < endY; y += spacingY) {
-        for (let x = startX; x < endX; x += spacingX) {
-            ctx.fillText(text, x, y);
+    const currentPage = viewerState.currentPage || 1;
+    const visiblePages = new Set([currentPage, currentPage - 1, currentPage + 1]);
+
+    visiblePages.forEach(pageNum => {
+        if (pageNum < 1) return;
+        const pageIndex = pageNum - 1;
+        if (pageIndex >= viewerState.pages.length) return;
+
+        const canvas = document.querySelector(`.page-watermark[data-page-index="${pageIndex}"]`);
+        if (!canvas) return;
+        if (canvas.dataset.drawn === '1') return;
+
+        const img = document.querySelector(`.page img[data-page-index="${pageIndex}"]`);
+        const wrapper = canvas.parentElement;
+        const width = wrapper ? wrapper.clientWidth : 0;
+        const height = wrapper ? wrapper.clientHeight : 0;
+
+        if (img && img.complete && img.naturalWidth > 0) {
+            drawPageWatermark(canvas, img);
+            canvas.dataset.drawn = '1';
+        } else if (width > 0 && height > 0) {
+            drawPlaceholderWatermark(canvas, width, height);
         }
-    }
-
-    ctx.restore();
+    });
 }
 
 function redrawAllWatermarks() {
@@ -780,12 +783,16 @@ function redrawAllWatermarks() {
 
     const canvases = document.querySelectorAll('.page-watermark');
     canvases.forEach(canvas => {
+        canvas.dataset.drawn = '';
         const pageIndex = canvas.getAttribute('data-page-index');
         const img = document.querySelector(`.page img[data-page-index="${pageIndex}"]`);
         if (img && img.complete && img.naturalWidth > 0) {
             drawPageWatermark(canvas, img);
+            canvas.dataset.drawn = '1';
         }
     });
+
+    prerenderWatermarksForVisiblePages();
 }
 
 function generatePageViewSessionId() {
@@ -937,6 +944,7 @@ function initFlipbook() {
                     hideMagnifier();
                     resetMobileZoom();
                 }
+                setTimeout(() => prerenderWatermarksForVisiblePages(), 0);
             },
             turned: function (event, page, view) {
                 viewerState.currentPage = page;
@@ -949,7 +957,10 @@ function initFlipbook() {
                 updatePageIndicator();
                 highlightCurrentThumb();
                 updateBookmarkButton();
-                setTimeout(() => checkAndDrawWatermarks(), 50);
+                setTimeout(() => {
+                    prerenderWatermarksForVisiblePages();
+                    checkAndDrawWatermarks();
+                }, 50);
 
                 if (viewerState.magnifierEnabled) {
                     resetMagnifier();
@@ -974,6 +985,7 @@ function initFlipbook() {
     }
 
     setTimeout(() => {
+        prerenderWatermarksForVisiblePages();
         checkAndDrawWatermarks();
     }, 200);
 }
@@ -988,6 +1000,7 @@ function checkAndDrawWatermarks() {
             const canvas = document.querySelector(`.page-watermark[data-page-index="${pageIndex}"]`);
             if (canvas) {
                 drawPageWatermark(canvas, img);
+                canvas.dataset.drawn = '1';
             }
         }
     });
@@ -1269,6 +1282,45 @@ function getMousePositionInImage(e, img) {
     };
 }
 
+function getWatermarkedCompositeUrl(img) {
+    const wm = viewerState.watermark;
+    if (!wm || !wm.enabled) {
+        return getImageUrl(img.getAttribute('src') || img.src);
+    }
+
+    if (img.dataset.compositeUrl) {
+        return img.dataset.compositeUrl;
+    }
+
+    const naturalW = img.naturalWidth;
+    const naturalH = img.naturalHeight;
+    if (!naturalW || !naturalH) {
+        return getImageUrl(img.getAttribute('src') || img.src);
+    }
+
+    const composite = document.createElement('canvas');
+    composite.width = naturalW;
+    composite.height = naturalH;
+    const ctx = composite.getContext('2d');
+
+    ctx.drawImage(img, 0, 0, naturalW, naturalH);
+
+    const text = resolveWatermarkPlaceholders(wm.text || '版权所有');
+    const color = wm.color || '#000000';
+    const opacity = wm.opacity ?? 0.15;
+    const density = wm.density || 3;
+    drawWatermarkPatternGlobal(ctx, text, color, opacity, density, naturalW, naturalH);
+
+    let dataUrl;
+    try {
+        dataUrl = composite.toDataURL('image/png');
+    } catch (e) {
+        dataUrl = getImageUrl(img.getAttribute('src') || img.src);
+    }
+    img.dataset.compositeUrl = dataUrl;
+    return dataUrl;
+}
+
 function updateMagnifier(e, img) {
     const lens = document.getElementById('magnifier-lens');
     const lensInner = document.getElementById('magnifier-lens-inner');
@@ -1298,9 +1350,9 @@ function updateMagnifier(e, img) {
     const bgPosX = -(clampX * zoom - lensHalf);
     const bgPosY = -(clampY * zoom - lensHalf);
 
-    const imgSrc = getImageUrl(img.getAttribute('src') || img.src);
+    const compositeUrl = getWatermarkedCompositeUrl(img);
 
-    lensInner.style.backgroundImage = `url(${imgSrc})`;
+    lensInner.style.backgroundImage = `url(${compositeUrl})`;
     lensInner.style.backgroundSize = `${img.naturalWidth * zoom}px ${img.naturalHeight * zoom}px`;
     lensInner.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
 
@@ -1447,15 +1499,32 @@ function updateMobileZoom(img) {
     const scale = viewerState.mobileZoomScale;
     const panX = viewerState.mobilePanOffset.x;
     const panY = viewerState.mobilePanOffset.y;
-    img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
-    img.style.transformOrigin = 'center center';
-    img.style.transition = viewerState.isMobileZoomActive ? 'none' : 'transform 0.3s ease';
+    const transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    const transition = viewerState.isMobileZoomActive ? 'none' : 'transform 0.3s ease';
+
+    const wrapper = img.closest('.page-image-wrapper');
+    if (wrapper) {
+        wrapper.style.transform = transform;
+        wrapper.style.transformOrigin = 'center center';
+        wrapper.style.transition = transition;
+    } else {
+        img.style.transform = transform;
+        img.style.transformOrigin = 'center center';
+        img.style.transition = transition;
+    }
 }
 
 function resetMobileZoom() {
     viewerState.mobileZoomScale = 1;
     viewerState.mobilePanOffset = { x: 0, y: 0 };
     viewerState.isMobileZoomActive = false;
+
+    const wrappers = document.querySelectorAll('#flipbook .page-image-wrapper');
+    wrappers.forEach(wrapper => {
+        wrapper.style.transform = '';
+        wrapper.style.transformOrigin = '';
+        wrapper.style.transition = '';
+    });
 
     const images = document.querySelectorAll('#flipbook .page img');
     images.forEach(img => {

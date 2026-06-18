@@ -563,6 +563,18 @@ input:-webkit-autofill:focus {
     position: relative;
     width: 100%;
     height: 100%;
+    overflow: hidden;
+    will-change: transform;
+}
+#flipbook .page .page-image-loading {
+    position: absolute;
+    inset: 0;
+    background: var(--gray-100);
+    z-index: 0;
+}
+#flipbook .page .page-image-wrapper img {
+    position: relative;
+    z-index: 1;
 }
 #flipbook .page .page-watermark {
     position: absolute;
@@ -571,7 +583,7 @@ input:-webkit-autofill:focus {
     width: 100%;
     height: 100%;
     pointer-events: none;
-    z-index: 2;
+    z-index: 3;
 }
 #flipbook .page .page-content {
     width: 100%; height: 100%; display: flex;
